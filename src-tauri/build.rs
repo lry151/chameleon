@@ -13,7 +13,8 @@ fn main() {
 fn stage_webview2_loader() -> std::io::Result<()> {
     use std::{env, fs, path::PathBuf};
 
-    let arch = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH 未设置");
+    let arch = match target_arch.as_str() {
         "x86_64" => "x64",
         "x86" => "x86",
         "aarch64" => "arm64",
