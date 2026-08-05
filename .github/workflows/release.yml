@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows (msvc)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Rust (msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./ -> target"
+          shared-key: release-windows-msvc
+
+      # msvc 目标下 webview2-com-sys 静态链接 WebView2LoaderStatic.lib，
+      # exe 内嵌加载器 → 单文件可跑，无需随附 DLL（参考 t8y2/dbx 发布方式）。
+      - name: Build Tauri app (NSIS installer)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 变色龙 ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc
+
+      - name: Upload portable ZIP (single exe, no DLL needed)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${env:GITHUB_REF_NAME}".TrimStart("v")
+          $portableDir = "portable\chameleon_$version_x64"
+          $exePath = "target\x86_64-pc-windows-msvc\release\chameleon-app.exe"
+          if (!(Test-Path $exePath)) {
+            Write-Error "Missing executable: $exePath"
+            exit 1
+          }
+          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+          Copy-Item $exePath (Join-Path $portableDir "变色龙.exe") -Force
+          if (Test-Path "LICENSE") { Copy-Item "LICENSE" (Join-Path $portableDir "LICENSE") -Force }
+          Set-Content -Path (Join-Path $portableDir "portable.txt") -Value "变色龙便携版 $version — 双击 变色龙.exe 即可运行。" -NoNewline
+          $zip = "chameleon_${version}_x64-portable.zip"
+          Compress-Archive -Path "$portableDir\*" -DestinationPath $zip -Force
+          gh release upload "${env:GITHUB_REF_NAME}" $zip --clobber

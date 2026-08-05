@@ -1,8 +1,7 @@
 fn main() {
     tauri_build::build();
     // 裸 cargo build 不会像 tauri build 那样把 WebView2Loader.dll 放到 exe 同目录，
-    // 这里补上：构建 Windows 目标时自动拷贝，保证便携文件夹开箱即用。
-    #[cfg(target_os = "windows")]
+    #[cfg(all(target_os = "windows", target_env = "gnu"))]
     {
         if let Err(e) = stage_webview2_loader() {
             println!("cargo:warning=无法自动放置 WebView2Loader.dll：{e}（可改用 tauri build，或手动从 webview2-com-sys crate 取该 DLL 放到 exe 同目录）");
