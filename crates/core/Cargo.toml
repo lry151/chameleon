@@ -1,0 +1,24 @@
+[package]
+name = "chameleon-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "chameleon 变色龙核心库：角色隔离窗口、会话接力、快照、沙箱全部领域逻辑"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+chromiumoxide.workspace = true
+chromiumoxide_cdp.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+dirs.workspace = true
+url.workspace = true
+chrono.workspace = true
+regex.workspace = true
+fs2.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

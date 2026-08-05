@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>变色龙</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🦎</span>
+      <div>
+        <h1>变色龙</h1>
+        <p class="sub">Chrome 会话隔离管理工具</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button id="btn-launch-all" class="primary">一键启动所有</button>
+      <button id="btn-close-all">一键关闭所有</button>
+      <button id="btn-sandbox">启动临时沙箱</button>
+      <button id="btn-cleanup">清理临时数据目录</button>
+      <button id="btn-export">导出配置</button>
+      <button id="btn-import">导入配置</button>
+    </div>
+  </header>
+
+  <section class="browser-bar">
+    <div class="label">浏览器：</div>
+    <span id="browser-path" class="muted">检测中…</span>
+    <button id="btn-pick-browser" class="ghost">选择 Chrome 路径</button>
+  </section>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>角色</h2>
+        <button id="btn-new-role" class="accent">+ 新建角色</button>
+      </div>
+      <div id="roles" class="roles-grid"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>临时沙箱</h2>
+        <span class="muted small">用完即毁，关闭后自动删除数据目录</span>
+      </div>
+      <div id="sandboxes" class="list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>会话快照</h2>
+        <span class="muted small">保存所有角色标签页与窗口位置，长流程回归一键恢复</span>
+      </div>
+      <div class="snapshot-row">
+        <input id="snapshot-name" type="text" placeholder="快照名称" />
+        <button id="btn-snapshot-save" class="primary">保存快照</button>
+      </div>
+      <div id="snapshots" class="list"></div>
+    </section>
+  </main>
+
+  <!-- 新建/编辑角色弹层 -->
+  <dialog id="role-dialog" class="dialog">
+    <form id="role-form">
+      <h3 id="role-dialog-title">新建角色</h3>
+      <label>名称（中文名）
+        <input id="role-name" type="text" required placeholder="如：ERP-管理员" />
+      </label>
+      <label>颜色色块
+        <input id="role-color" type="color" value="#e74c3c" />
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="role-cancel" class="ghost">取消</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 接力弹层 -->
+  <dialog id="handoff-dialog" class="dialog">
+    <div class="handoff">
+      <h3>会话接力</h3>
+      <div class="handoff-row">
+        <div>源角色：<b id="handoff-source"></b></div>
+        <div>当前标签页：<span id="handoff-url" class="muted small"></span></div>
+      </div>
+      <label>目标角色
+        <select id="handoff-target"></select>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="handoff-cancel" class="ghost">取消</button>
+        <button type="button" id="handoff-parallel" class="primary">并行打开（保留源窗口）</button>
+        <button type="button" id="handoff-relay">接力打开（关闭源窗口）</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 预设管理弹层 -->
+  <dialog id="links-dialog" class="dialog">
+    <div class="links">
+      <h3>常用 URL 预设 — <span id="links-role"></span></h3>
+      <div id="links-list" class="list"></div>
+      <form id="links-form" class="inline-form">
+        <input id="link-name" type="text" placeholder="预设名称" required />
+        <input id="link-url" type="url" placeholder="https://…" required />
+        <button type="submit" class="accent">添加</button>
+      </form>
+      <div class="dialog-actions">
+        <button type="button" id="links-close" class="ghost">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

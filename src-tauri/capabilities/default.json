@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "变色龙默认权限集：核心能力 + 对话框（选文件、保存、消息提示）",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

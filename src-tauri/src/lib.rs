@@ -1,0 +1,449 @@
+//! 变色龙 Tauri 外壳：薄壳透传 chameleon-core 的全部领域逻辑。
+//!
+//! 命令层只做参数搬运与错误文案映射（统一走 `ChameleonError::message` 的中文文案）。
+
+use chameleon_core::{
+    batch::BatchResult,
+    config::{app_dir, ConfigStore},
+    export,
+    handoff::HandoffMode,
+    launcher,
+    model::Role,
+    quicklinks, sandbox,
+    single_instance::InstanceLock,
+    snapshot::SnapshotStore,
+    ChameleonError, Session,
+};
+use serde::Serialize;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tauri::{Manager, State};
+use tauri_plugin_dialog::DialogExt;
+
+/// 把领域错误映射为对外中文文案。
+fn msg(e: ChameleonError) -> String {
+    e.message()
+}
+
+/// 应用共享状态：运行中会话 + 应用目录。
+pub struct AppState {
+    pub session: Arc<tokio::sync::Mutex<Session>>,
+    pub app_dir: PathBuf,
+}
+
+impl AppState {
+    fn store(&self) -> ConfigStore {
+        ConfigStore::new(self.app_dir.join("config.json"))
+    }
+    fn snapshots(&self) -> SnapshotStore {
+        SnapshotStore::new(self.app_dir.join("snapshots"))
+    }
+}
+
+/// 前端可用的角色视图（角色 + 是否运行中）。
+#[derive(Serialize)]
+pub struct RoleView {
+    #[serde(flatten)]
+    pub role: Role,
+    pub running: bool,
+}
+
+/// 前端可用的整体状态视图。
+#[derive(Serialize)]
+pub struct AppStateView {
+    pub roles: Vec<RoleView>,
+    pub sandboxes: Vec<sandbox::SandboxInfo>,
+    pub snapshots: Vec<String>,
+    pub browser_path: Option<String>,
+    pub data_root: String,
+}
+
+/// —— 查询 ——
+
+#[tauri::command]
+async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
+    let store = state.store();
+    let cfg = store.load().map_err(msg)?;
+    let session = state.session.lock().await;
+    let roles = cfg
+        .roles
+        .iter()
+        .map(|r| RoleView {
+            role: r.clone(),
+            running: session.is_role_running(&r.id),
+        })
+        .collect();
+    let sandboxes = session
+        .sandboxes
+        .values()
+        .map(|s| sandbox::SandboxInfo {
+            id: s.id.clone(),
+            dir: s.dir.clone(),
+        })
+        .collect();
+    drop(session);
+    let snapshots = state.snapshots().list().unwrap_or_default();
+    Ok(AppStateView {
+        roles,
+        sandboxes,
+        snapshots,
+        browser_path: cfg.browser_path.as_ref().map(|p| p.display().to_string()),
+        data_root: cfg.data_root.display().to_string(),
+    })
+}
+
+/// —— 角色管理 ——
+
+#[tauri::command]
+async fn create_role(state: State<'_, AppState>, name: String, color: String) -> Result<Role, String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    let role = store.create_role(&mut cfg, name, color).map_err(msg)?;
+    Ok(role)
+}
+
+#[tauri::command]
+async fn update_role(state: State<'_, AppState>, role: Role) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    store.update_role(&mut cfg, role).map_err(msg)
+}
+
+#[tauri::command]
+async fn delete_role(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    // 若角色窗口正在运行，先优雅关闭并记录位置
+    {
+        let mut session = state.session.lock().await;
+        if session.is_role_running(&id) {
+            let _ = launcher::close_role(&mut session, &store, &mut cfg, &id).await;
+        }
+    }
+    store.delete_role(&mut cfg, &id).map_err(msg)
+}
+
+/// —— 启动 / 关闭 ——
+
+#[tauri::command]
+async fn launch_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let store = state.store();
+    let cfg = store.load().map_err(msg)?;
+    let role = cfg.roles.iter().find(|r| r.id == id).cloned().ok_or_else(|| msg(ChameleonError::RoleNotFound { id: id.clone() }))?;
+    let mut session = state.session.lock().await;
+    launcher::launch_role(&mut session, &cfg, &role).await.map_err(msg)
+}
+
+#[tauri::command]
+async fn close_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    launcher::close_role(&mut session, &store, &mut cfg, &id).await.map_err(msg)
+}
+
+#[tauri::command]
+async fn launch_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
+    let store = state.store();
+    let cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    Ok(chameleon_core::batch::start_all(&mut session, &cfg).await)
+}
+
+#[tauri::command]
+async fn close_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    Ok(chameleon_core::batch::close_all(&mut session, &store, &mut cfg).await)
+}
+
+/// —— 接力 ——
+
+#[tauri::command]
+async fn handoff_cmd(
+    state: State<'_, AppState>,
+    source_id: String,
+    target_id: String,
+    mode: HandoffMode,
+) -> Result<String, String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    chameleon_core::handoff::handoff(&mut session, &store, &mut cfg, &source_id, &target_id, mode)
+        .await
+        .map_err(msg)
+}
+
+/// —— 常用 URL 预设 ——
+
+#[tauri::command]
+async fn add_quick_link(state: State<'_, AppState>, role_id: String, name: String, url: String) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    quicklinks::add(&store, &mut cfg, &role_id, &name, &url).map_err(msg)
+}
+
+#[tauri::command]
+async fn remove_quick_link(state: State<'_, AppState>, role_id: String, name: String) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    quicklinks::remove(&store, &mut cfg, &role_id, &name).map_err(msg)
+}
+
+#[tauri::command]
+async fn open_quick_link(state: State<'_, AppState>, role_id: String, name: String) -> Result<String, String> {
+    let store = state.store();
+    let cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    quicklinks::open(&mut session, &cfg, &role_id, &name).await.map_err(msg)
+}
+
+/// —— 浏览器路径 ——
+
+#[tauri::command]
+async fn detect_browser_cmd(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let cfg = state.store().load().map_err(msg)?;
+    match chameleon_core::browser::detect_browser(cfg.browser_path.as_deref()) {
+        Ok(p) => Ok(Some(p.display().to_string())),
+        Err(ChameleonError::BrowserNotFound) => Ok(None),
+        Err(e) => Err(msg(e)),
+    }
+}
+
+#[tauri::command]
+async fn pick_browser_path(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("选择 Chrome 或 Edge 可执行文件")
+        .blocking_pick_file();
+    Ok(picked.and_then(|f| f.into_path().ok().map(|p| p.display().to_string())))
+}
+
+#[tauri::command]
+async fn set_browser_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    cfg.browser_path = Some(PathBuf::from(path));
+    store.save(&cfg).map_err(msg)
+}
+
+/// —— 配置导出 / 导入 ——
+
+#[tauri::command]
+async fn export_config_cmd(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let cfg = state.store().load().map_err(msg)?;
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("导出角色配置")
+        .set_file_name("chameleon-config.json")
+        .add_filter("JSON", &["json"])
+        .blocking_save_file();
+    let Some(fp) = picked else { return Ok(None) };
+    let dest = fp.into_path().map_err(|_| "所选保存路径无效。".to_string())?;
+    export::export_config(&cfg, &dest).map_err(msg)?;
+    Ok(Some(dest.display().to_string()))
+}
+
+#[tauri::command]
+async fn import_config_cmd(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<usize, String> {
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("导入角色配置")
+        .add_filter("JSON", &["json"])
+        .blocking_pick_file();
+    let Some(fp) = picked else { return Ok(0) };
+    let src = fp.into_path().map_err(|_| "所选文件路径无效。".to_string())?;
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    export::import_config(&store, &mut cfg, &src).map_err(msg)
+}
+
+/// —— 会话快照（v2） ——
+
+#[tauri::command]
+async fn save_snapshot(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    state.snapshots().save(&mut session, &store, &mut cfg, &name).await.map_err(msg)
+}
+
+#[tauri::command]
+async fn list_snapshots(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    state.snapshots().list().map_err(msg)
+}
+
+#[tauri::command]
+async fn restore_snapshot(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    state.snapshots().restore(&mut session, &store, &mut cfg, &name).await.map_err(msg)
+}
+
+#[tauri::command]
+async fn delete_snapshot(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    state.snapshots().delete(&name).map_err(msg)
+}
+
+/// —— 临时沙箱（v2） ——
+
+#[tauri::command]
+async fn launch_sandbox(state: State<'_, AppState>) -> Result<sandbox::SandboxInfo, String> {
+    let cfg = state.store().load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    sandbox::launch(&mut session, &cfg).await.map_err(msg)
+}
+
+#[tauri::command]
+async fn close_sandbox(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let mut session = state.session.lock().await;
+    sandbox::close(&mut session, &id).await.map_err(msg)
+}
+
+#[tauri::command]
+async fn cleanup_temp(state: State<'_, AppState>) -> Result<usize, String> {
+    let cfg = state.store().load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    chameleon_core::cleanup::cleanup_all(&mut session, &cfg).await.map_err(msg)
+}
+
+/// —— 退出（优雅关闭全部窗口） ——
+
+#[tauri::command]
+async fn quit_app(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<(), String> {
+    shutdown(&state).await;
+    app.exit(0);
+    Ok(())
+}
+
+async fn shutdown(state: &AppState) {
+    let store = state.store();
+    let mut cfg = store.load().unwrap_or_default();
+    let mut session = state.session.lock().await;
+    launcher::close_all_roles(&mut session, &store, &mut cfg).await;
+    let ids: Vec<String> = session.sandboxes.keys().cloned().collect();
+    for id in ids {
+        let _ = sandbox::close(&mut session, &id).await;
+    }
+}
+
+#[cfg(windows)]
+pub fn webview2_installed() -> bool {
+    const KEYS: [&str; 3] = [
+        r"HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        r"HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+        r"HKCU\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    ];
+    KEYS.iter().any(|k| reg_key_present(k))
+}
+
+#[cfg(windows)]
+fn reg_key_present(key: &str) -> bool {
+    std::process::Command::new("reg")
+        .args(["query", key])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// 系统级弹窗（Windows 用 MessageBoxW；其他平台仅 stderr）。
+pub fn show_error_box(title: &str, msg: &str) {
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+        let title_w: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+        let msg_w: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            let _ = MessageBoxW(
+                None,
+                PCWSTR(msg_w.as_ptr()),
+                PCWSTR(title_w.as_ptr()),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        eprintln!("{title}: {msg}");
+    }
+}
+
+pub fn run() {
+    let app_dir = app_dir();
+    // 单实例锁：二次启动被拦截并提示
+    let _lock = match InstanceLock::acquire(&app_dir) {
+        Ok(l) => l,
+        Err(e) => {
+            show_error_box("变色龙", &e.message());
+            std::process::exit(1);
+        }
+    };
+
+    // 启动时清理崩溃残留的孤儿沙箱目录
+    {
+        let cfg = ConfigStore::new(app_dir.join("config.json"))
+            .load()
+            .unwrap_or_default();
+        let _ = sandbox::cleanup_orphans(&[], &cfg);
+    }
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState {
+            session: Arc::new(tokio::sync::Mutex::new(Session::default())),
+            app_dir: app_dir.clone(),
+        })
+        .setup(|app| {
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("变色龙 — Chrome 会话隔离管理工具")
+            .inner_size(1140.0, 800.0)
+            .min_inner_size(900.0, 580.0)
+            .build()?;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_state,
+            create_role,
+            update_role,
+            delete_role,
+            launch_role_cmd,
+            close_role_cmd,
+            launch_all,
+            close_all,
+            handoff_cmd,
+            add_quick_link,
+            remove_quick_link,
+            open_quick_link,
+            detect_browser_cmd,
+            pick_browser_path,
+            set_browser_path,
+            export_config_cmd,
+            import_config_cmd,
+            save_snapshot,
+            list_snapshots,
+            restore_snapshot,
+            delete_snapshot,
+            launch_sandbox,
+            close_sandbox,
+            cleanup_temp,
+            quit_app
+        ])
+        .build(tauri::generate_context!())
+        .expect("构建变色龙应用失败")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                let state = app_handle.state::<AppState>();
+                tauri::async_runtime::block_on(shutdown(&state));
+            }
+        });
+}

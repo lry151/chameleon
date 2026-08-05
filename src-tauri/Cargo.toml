@@ -1,0 +1,27 @@
+[package]
+name = "chameleon-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "chameleon 变色龙 Tauri 外壳（薄壳透传 chameleon-core）"
+
+[lib]
+name = "chameleon_app_lib"
+crate-type = ["staticlib", "rlib"]
+
+[[bin]]
+name = "chameleon-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde.workspace = true
+serde_json.workspace = true
+chameleon-core = { path = "../crates/core" }
+tokio.workspace = true
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
