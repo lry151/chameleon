@@ -126,7 +126,7 @@ function systemBox(s, state) {
   ));
   acts.appendChild(btn("预设", "small", () => openLinks({ kind: "system", id: s.id, name: s.name })));
   acts.appendChild(btn("编辑", "ghost small", () => openSystemDialog(s)));
-  acts.appendChild(btn("删除", "danger small", () => { if (confirm(`确定删除系统「${s.name}」？角色保留但变为未分组。`)) run(invoke("delete_system", { id: s.id }), `已删除系统「${s.name}」`); }));
+  acts.appendChild(btn("删除", "danger small", () => openDeleteSystemDialog(s)));
   acts.appendChild(btn("＋角色", "small", () => openRoleDialog({ system_id: s.id })));
   head.appendChild(acts);
   box.appendChild(head);
@@ -265,6 +265,13 @@ function openSystemDialog(sys) {
   $("system-dialog-title").textContent = sys ? "编辑系统" : "新建系统";
   $("system-name").value = sys ? sys.name : "";
   $("system-dialog").dataset.id = sys ? sys.id : "";
+  // 显示角色数量（编辑时）
+  if (sys) {
+    const count = LAST.roles.filter((r) => r.system_id === sys.id).length;
+    $("system-info").textContent = `系统内有 ${count} 个角色`;
+  } else {
+    $("system-info").textContent = "";
+  }
   $("system-dialog").showModal();
 }
 
@@ -564,6 +571,33 @@ systemThemeMq.addEventListener("change", () => {
     if (uiPrefs.theme === "System") applyTheme("System");
 });
 
+// —— 删除系统确认 ——
+let deleteSystemId = null;
+function openDeleteSystemDialog(sys) {
+  deleteSystemId = sys.id;
+  $("delete-system-name").textContent = sys.name;
+  const count = LAST.roles.filter((r) => r.system_id === sys.id).length;
+  $("delete-system-info").textContent = count > 0
+    ? `系统内有 ${count} 个角色。选择删除方式：`
+    : "系统内没有角色。";
+  $("delete-system-dialog").showModal();
+}
+$("delete-system-cancel").onclick = () => { $("delete-system-dialog").close(); deleteSystemId = null; };
+$("delete-system-keep-roles").onclick = async () => {
+  if (!deleteSystemId) return;
+  const id = deleteSystemId;
+  $("delete-system-dialog").close();
+  deleteSystemId = null;
+  await run(invoke("delete_system", { id }), null);
+};
+$("delete-system-with-roles").onclick = async () => {
+  if (!deleteSystemId) return;
+  const id = deleteSystemId;
+  $("delete-system-dialog").close();
+  deleteSystemId = null;
+  const count = await run(invoke("delete_system_with_roles", { id }), null);
+  if (count != null) toast(`已删除系统及 ${count} 个角色`, "ok");
+};
 loadPrefs();
 
 refresh();

@@ -148,6 +148,21 @@ async fn delete_system(state: State<'_, AppState>, id: String) -> Result<(), Str
     store.delete_system(&mut cfg, &id).map_err(msg)
 }
 
+#[tauri::command]
+async fn delete_system_with_roles(state: State<'_, AppState>, id: String) -> Result<usize, String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    // 收集待删角色 ID（在 delete_system 解除关联前）
+    let role_ids: Vec<String> = cfg.roles.iter().filter(|r| r.system_id.as_deref() == Some(&id)).map(|r| r.id.clone()).collect();
+    // 先删除系统
+    store.delete_system(&mut cfg, &id).map_err(msg)?;
+    // 逐个删除角色
+    for rid in &role_ids {
+        store.delete_role(&mut cfg, rid).map_err(msg)?;
+    }
+    Ok(role_ids.len())
+}
+
 /// —— 启动 / 关闭 ——
 
 #[tauri::command]
@@ -605,7 +620,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_state,
             create_role, update_role, delete_role,
-            create_system, update_system, delete_system,
+            create_system, update_system, delete_system, delete_system_with_roles,
             launch_role_cmd, close_role_cmd, launch_all, launch_system, close_system, close_all,
             login_assist_cmd, set_role_login,
             handoff_cmd,

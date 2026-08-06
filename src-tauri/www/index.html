@@ -66,6 +66,7 @@
   <dialog id="system-dialog" class="dialog">
     <form id="system-form">
       <h3 id="system-dialog-title">新建系统</h3>
+      <p id="system-info" class="muted small" style="margin:-4px 0 8px"></p>
       <label>系统名称<input id="system-name" type="text" required placeholder="如：ERP系统" /></label>
       <div class="dialog-actions">
         <button type="button" id="system-cancel" class="ghost">取消</button>
@@ -113,6 +114,19 @@
       </form>
       <div class="dialog-actions">
         <button type="button" id="links-close" class="ghost">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 删除系统确认 -->
+  <dialog id="delete-system-dialog" class="dialog">
+    <div class="delete-system">
+      <h3>删除系统「<span id="delete-system-name"></span>」</h3>
+      <p class="muted small" id="delete-system-info"></p>
+      <div class="dialog-actions" style="flex-direction:column;gap:8px">
+        <button type="button" id="delete-system-with-roles" class="danger">删除系统 + 所有角色</button>
+        <button type="button" id="delete-system-keep-roles" class="danger">只删系统，保留角色</button>
+        <button type="button" id="delete-system-cancel" class="ghost">取消</button>
       </div>
     </div>
   </dialog>
