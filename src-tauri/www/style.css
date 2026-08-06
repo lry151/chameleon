@@ -42,6 +42,7 @@
 [data-theme="light"] .links-login-fields { background: rgba(230, 230, 235, 0.5); }
 [data-theme="light"] .toast { background: rgba(255, 255, 255, 0.95); border-color: var(--border); }
 [data-theme="light"] dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
+[data-theme="light"] dialog.dialog { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12); }
 [data-theme="light"] .role-card .swatch { border-color: rgba(0, 0, 0, 0.12); }
 [data-theme="light"] .accent-dot.active { box-shadow: 0 0 0 2px var(--panel); }
 * { box-sizing: border-box; }
@@ -104,6 +105,7 @@ button.ghost:hover { background: var(--hover-bg); color: var(--text); border-col
 button.danger { background: transparent; border-color: transparent; color: var(--danger); }
 button.danger:hover { background: rgba(231, 76, 60, 0.1); border-color: var(--danger); }
 button:disabled { opacity: .5; cursor: not-allowed; }
+button.small { padding: 4px 10px; font-size: 12px; }
 
 .browser-bar {
   display: flex; align-items: center; gap: 10px;
@@ -209,7 +211,8 @@ dialog.dialog {
   transition: opacity 200ms ease, transform 200ms ease;
 }
 dialog.dialog[open] { opacity: 1; transform: scale(1); }
-dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); }
+dialog.dialog[open]::backdrop { opacity: 1; }
+dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px); opacity: 0; transition: opacity 200ms ease; }
 dialog.dialog form { display: flex; flex-direction: column; gap: 10px; }
 dialog.dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 dialog.dialog.wide { min-width: 560px; }
@@ -223,8 +226,24 @@ dialog.dialog.wide { min-width: 560px; }
 .settings h2 { margin: 0; font-size: 16px; font-weight: 700; }
 .settings-group { display: flex; flex-direction: column; gap: 6px; }
 .settings-label { font-size: 13px; color: var(--muted); }
-.settings-radio-group { display: flex; gap: 12px; }
-.settings-radio-group label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text); cursor: pointer; }
+.settings-radio-group {
+  display: flex; gap: 0;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+}
+.settings-radio-group label {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 6px 14px; font-size: 13px; color: var(--muted); cursor: pointer;
+  border-right: 1px solid var(--border);
+  transition: background .15s, color .15s;
+}
+.settings-radio-group label:last-child { border-right: none; }
+.settings-radio-group label:hover { background: var(--hover-bg); color: var(--text); }
+.settings-radio-group input:checked + * { color: var(--text); font-weight: 600; }
+.settings-radio-group label:has(input:checked) {
+  background: var(--accent); color: #fff; font-weight: 600;
+}
+.settings-value { font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 #opacity-slider { width: 100%; accent-color: var(--accent); }
 .accent-picker { display: flex; gap: 8px; }
 .accent-dot {
@@ -246,14 +265,33 @@ dialog.dialog.wide { min-width: 560px; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
 @media (prefers-reduced-transparency: reduce) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #1c1b22;
     --panel: #27262e;
     --panel-2: #322f3a;
     --sys: #211f29;
+    --topbar-bg: #211f29;
     --border: #3b3946;
+    --hover-bg: #3a3744;
+    --win-hover: #ffffff14;
+    --chip-bg: #2a283299;
+    --chip-hover: #2c283899;
+    --chip-sys: #211f2980;
   }
-  dialog.dialog::backdrop { backdrop-filter: none; background: rgba(0,0,0,0.7); }
+  [data-theme="light"] {
+    --bg: #e8e8ec;
+    --panel: #f0f0f4;
+    --panel-2: #e4e4ea;
+    --sys: #dcdce4;
+    --topbar-bg: #f0f0f4;
+    --border: #c8c8d2;
+    --hover-bg: #dcdce4;
+    --win-hover: #0000000a;
+    --chip-bg: #e4e4ea99;
+    --chip-hover: #dcdce499;
+    --chip-sys: #d0d0d880;
+  }
+  dialog.dialog::backdrop { backdrop-filter: none; }
 }
 /* reduced-motion：弹窗 cross-fade，无 scale/弹簧 */
 @media (prefers-reduced-motion: reduce) {

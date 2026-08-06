@@ -122,10 +122,10 @@
   <dialog id="delete-system-dialog" class="dialog">
     <div class="delete-system">
       <h3>删除系统「<span id="delete-system-name"></span>」</h3>
-      <p class="muted small" id="delete-system-info"></p>
-      <div class="dialog-actions" style="flex-direction:column;gap:8px">
+      <p class="muted small" id="delete-system-info" style="margin:-2px 0 12px"></p>
+      <div style="display:flex;flex-direction:column;gap:8px">
         <button type="button" id="delete-system-with-roles" class="danger">删除系统 + 所有角色</button>
-        <button type="button" id="delete-system-keep-roles" class="danger">只删系统，保留角色</button>
+        <button type="button" id="delete-system-keep-roles">只删系统，保留角色</button>
         <button type="button" id="delete-system-cancel" class="ghost">取消</button>
       </div>
     </div>
@@ -134,7 +134,7 @@
   <!-- 设置面板 -->
   <dialog id="settings-dialog" class="dialog settings-dialog">
     <div class="settings">
-      <h2>设置</h2>
+      <h3>设置</h3>
 
       <div class="settings-group">
         <label class="settings-label">主题</label>
@@ -146,7 +146,10 @@
       </div>
 
       <div class="settings-group">
-        <label class="settings-label" for="opacity-slider">面板透明度 <span id="opacity-value">72%</span></label>
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <label class="settings-label" for="opacity-slider">面板透明度</label>
+          <span id="opacity-value" class="settings-value">72%</span>
+        </div>
         <input type="range" id="opacity-slider" min="0.5" max="1.0" step="0.05" value="0.72" />
       </div>
 
@@ -167,7 +170,6 @@
       </div>
     </div>
   </dialog>
-
 
   <div id="toast" class="toast"></div>
   <script src="app.js"></script>
