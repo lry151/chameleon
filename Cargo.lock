@@ -472,7 +472,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "chameleon-app"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "chameleon-core",
  "serde",
@@ -482,12 +482,14 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
  "tokio",
+ "window-vibrancy",
  "windows",
+ "windows-version",
 ]
 
 [[package]]
 name = "chameleon-core"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "chromiumoxide",
  "chromiumoxide_cdp",

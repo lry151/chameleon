@@ -9,7 +9,7 @@ use chameleon_core::{
     export,
     handoff::HandoffMode,
     launcher,
-    model::{LoginConfig, Role, System},
+    model::{LoginConfig, QuickLinkLogin, Role, System, UiPreferences},
     quicklinks, sandbox,
     snapshot::SnapshotStore,
     ChameleonError, Session,
@@ -189,6 +189,14 @@ async fn launch_system(state: State<'_, AppState>, system_id: String) -> Result<
     Ok(chameleon_core::batch::start_system(&mut session, &cfg, &system_id).await)
 }
 
+
+#[tauri::command]
+async fn close_system(state: State<'_, AppState>, system_id: String) -> Result<BatchResult, String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    let mut session = state.session.lock().await;
+    Ok(chameleon_core::batch::close_system(&mut session, &store, &mut cfg, &system_id).await)
+}
 #[tauri::command]
 async fn close_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
     let store = state.store();
@@ -243,17 +251,17 @@ async fn handoff_cmd(
 /// —— 常用 URL 预设（角色级 + 系统级） ——
 
 #[tauri::command]
-async fn add_quick_link(state: State<'_, AppState>, role_id: String, name: String, url: String, auto_open: bool) -> Result<(), String> {
+async fn add_quick_link(state: State<'_, AppState>, role_id: String, name: String, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::add(&store, &mut cfg, &role_id, &name, &url, auto_open).map_err(msg)
+    quicklinks::add(&store, &mut cfg, &role_id, &name, &url, auto_open, login).map_err(msg)
 }
 
 #[tauri::command]
-async fn edit_quick_link(state: State<'_, AppState>, role_id: String, old_name: String, name: String, url: String, auto_open: bool) -> Result<(), String> {
+async fn edit_quick_link(state: State<'_, AppState>, role_id: String, old_name: String, name: String, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::edit(&store, &mut cfg, &role_id, &old_name, &name, &url, auto_open).map_err(msg)
+    quicklinks::edit(&store, &mut cfg, &role_id, &old_name, &name, &url, auto_open, login).map_err(msg)
 }
 
 #[tauri::command]
@@ -310,6 +318,22 @@ async fn set_browser_path(state: State<'_, AppState>, path: String) -> Result<()
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     cfg.browser_path = Some(PathBuf::from(path));
+    store.save(&cfg).map_err(msg)
+}
+
+/// —— UI 偏好 ——
+
+#[tauri::command]
+async fn get_ui_preferences(state: State<'_, AppState>) -> Result<UiPreferences, String> {
+    let cfg = state.store().load().map_err(msg)?;
+    Ok(cfg.ui_preferences)
+}
+
+#[tauri::command]
+async fn set_ui_preferences(state: State<'_, AppState>, prefs: UiPreferences) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    cfg.ui_preferences = prefs;
     store.save(&cfg).map_err(msg)
 }
 
@@ -447,6 +471,19 @@ fn reg_key_present(key: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// —— 窗口控制（无边框模式） ——
+
+#[tauri::command]
+fn app_minimize(window: tauri::Window) { let _ = window.minimize(); }
+
+#[tauri::command]
+fn app_maximize(window: tauri::Window) {
+    if window.is_maximized().unwrap_or(false) { let _ = window.unmaximize(); } else { let _ = window.maximize(); }
+}
+
+#[tauri::command]
+fn app_hide(window: tauri::Window) { let _ = window.hide(); }
+
 pub fn show_error_box(title: &str, msg: &str) {
     #[cfg(windows)]
     {
@@ -497,7 +534,28 @@ pub fn run() {
             .title("chameleon — Chrome 会话隔离管理工具")
             .inner_size(1180.0, 820.0)
             .min_inner_size(960.0, 600.0)
+            .decorations(false)
+            .transparent(true)
             .build()?;
+
+            // Windows 原生 Mica/Acrylic 背景效果
+            #[cfg(target_os = "windows")]
+            {
+                use window_vibrancy::{apply_mica, apply_acrylic};
+                use windows_version::OsVersion;
+                if let Some(window) = app.get_webview_window("main") {
+                    let ver = OsVersion::current();
+                    // Windows 11 (build 22000+) → Mica；Windows 10 → Acrylic
+                    let result = if ver.major >= 10 && ver.build >= 22000 {
+                        apply_mica(&window, None)
+                    } else {
+                        apply_acrylic(&window, Some((33, 31, 41, 180)))
+                    };
+                    if let Err(e) = result {
+                        eprintln!("window-vibrancy 失败: {e}");
+                    }
+                }
+            }
 
             // 系统托盘：常驻图标，关窗最小化到托盘，左键/菜单恢复
             let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
@@ -548,15 +606,17 @@ pub fn run() {
             get_state,
             create_role, update_role, delete_role,
             create_system, update_system, delete_system,
-            launch_role_cmd, close_role_cmd, launch_all, launch_system, close_all,
+            launch_role_cmd, close_role_cmd, launch_all, launch_system, close_system, close_all,
             login_assist_cmd, set_role_login,
             handoff_cmd,
             add_quick_link, edit_quick_link, remove_quick_link, open_quick_link,
             add_system_quick_link, edit_system_quick_link, remove_system_quick_link,
             pick_browser_path, set_browser_path,
+            get_ui_preferences, set_ui_preferences,
             export_config_cmd, import_config_cmd,
             save_snapshot, list_snapshots, restore_snapshot, delete_snapshot,
             launch_sandbox, close_sandbox, cleanup_temp,
+            app_minimize, app_maximize, app_hide,
             quit_app
         ])
         .build(tauri::generate_context!())

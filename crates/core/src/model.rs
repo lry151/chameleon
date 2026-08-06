@@ -4,12 +4,27 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// 常用 URL 预设：名称 + 地址 + 是否启动时自动打开。
+/// 可选挂登录凭据（含密码）—— 点击该预设时自动打开 URL 并填用户名/密码。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QuickLink {
     pub name: String,
     pub url: String,
     #[serde(default)]
     pub auto_open: bool,
+    /// 挂在此预设上的登录凭据；Some 时点击该预设触发自动登录（填用户名+密码）。
+    #[serde(default)]
+    pub login: Option<QuickLinkLogin>,
+}
+
+/// 预设级登录凭据：挂在 QuickLink 上的自动登录配置（存密码，角色级隔离）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QuickLinkLogin {
+    pub username: String,
+    pub password: String,
+    /// 用户名输入框 CSS 选择器；None = 自动找（密码框前最近的 text/email）。
+    pub username_selector: Option<String>,
+    /// 密码输入框 CSS 选择器；None = `input[type=password]`。
+    pub password_selector: Option<String>,
 }
 
 /// 登录辅助：半自动登录配置（不存密码）。
@@ -89,6 +104,40 @@ impl System {
     }
 }
 
+/// 主题模式：深色 / 浅色 / 跟随系统。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ThemeMode {
+    Dark,
+    Light,
+    System,
+}
+
+impl Default for ThemeMode {
+    fn default() -> Self {
+        Self::Dark
+    }
+}
+
+/// UI 偏好：主题 + 面板透明度 + Accent 颜色。持久化到 config.json。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UiPreferences {
+    pub theme: ThemeMode,
+    /// 面板透明度 0.5–1.0。
+    pub panel_opacity: f32,
+    /// Accent 颜色，十六进制如 "#1abc9c"。
+    pub accent_color: String,
+}
+
+impl Default for UiPreferences {
+    fn default() -> Self {
+        Self {
+            theme: ThemeMode::Dark,
+            panel_opacity: 0.72,
+            accent_color: "#1abc9c".into(),
+        }
+    }
+}
+
 /// 全局配置：角色列表 + 系统列表 + 浏览器路径 / 数据根目录等全局设置。
 /// config.json 为唯一配置源，明文 JSON，人工可改。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,6 +149,9 @@ pub struct GlobalConfig {
     pub roles: Vec<Role>,
     #[serde(default)]
     pub systems: Vec<System>,
+    /// UI 偏好（主题/透明度/Accent）；旧配置自动填充默认值。
+    #[serde(default)]
+    pub ui_preferences: UiPreferences,
 }
 
 impl Default for GlobalConfig {
@@ -109,6 +161,7 @@ impl Default for GlobalConfig {
             data_root: PathBuf::from("data"),
             roles: Vec::new(),
             systems: Vec::new(),
+            ui_preferences: UiPreferences::default(),
         }
     }
 }

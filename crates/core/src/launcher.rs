@@ -5,7 +5,7 @@
 use crate::browser;
 use crate::config::ConfigStore;
 use crate::error::{ChameleonError, Result};
-use crate::model::{GlobalConfig, LoginConfig, Role};
+use crate::model::{GlobalConfig, QuickLinkLogin, Role};
 use crate::safety;
 use crate::session::{RunningRole, Session};
 use crate::window;
@@ -20,8 +20,6 @@ fn headless() -> bool {
     std::env::var_os("CHAMELEON_HEADLESS").is_some()
 }
 
-/// 角色首页锚点页签的识别标记（data URL 中该属性名原样保留，用于快照过滤/恢复定位）。
-const ROLE_HOME_MARKER: &str = "data-chameleon-role-home";
 
 /// 构建角色的隔离启动参数。
 fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<BrowserConfig> {
@@ -106,15 +104,7 @@ pub async fn launch_role(
         role.id.clone(),
         RunningRole { browser, active_page: None },
     );
-    // 角色首页锚点页签：文档标题=角色名，启动时窗口一眼可辨（切其他页签标题变网站名，Chrome 限制）。
-    let home = role_home_url(role);
-    if let Some(run) = session.roles.get_mut(&role.id) {
-        if let Ok(page) = run.browser.new_page(CreateTargetParams::new(&home)).await {
-            let id = page.target_id().clone();
-            let _ = page.activate().await;
-            run.active_page = Some(id);
-        }
-    }
+
     // 首次启动 → 自动打开标记 auto_open 的预设（角色级 + 系统级）；失败跳过不阻塞。
     // 直接 new_page（不走 open_tab）避免 async 互递归。
     if auto_open {
@@ -261,8 +251,7 @@ pub async fn prune_dead_roles(session: &mut Session) -> usize {
     n
 }
 
-/// 读取角色所有标签页 URL（快照用）。跳过 chameleon 角色首页锚点页签
-/// （data URL 含标记），快照只记真实测试页。
+/// 读取角色所有标签页 URL（快照用）。跳过 about:blank 空页签。
 pub async fn list_tab_urls(session: &Session, role_id: &str) -> Vec<String> {
     let Some(run) = session.roles.get(role_id) else {
         return Vec::new();
@@ -273,29 +262,13 @@ pub async fn list_tab_urls(session: &Session, role_id: &str) -> Vec<String> {
     let mut urls = Vec::new();
     for p in pages {
         if let Ok(Some(u)) = p.url().await {
-            if !u.is_empty() && u != "about:blank" && !u.contains(ROLE_HOME_MARKER) {
+            if !u.is_empty() && u != "about:blank" {
                 urls.push(u);
             }
         }
     }
     urls
 }
-
-/// 定位角色首页锚点页签的 target id（快照恢复时纳入 close_other_tabs 的 keep 集，
-/// 保住窗口标题角色名）。无锚点页签返回 None。
-pub async fn find_role_home_tab(session: &Session, role_id: &str) -> Option<TargetId> {
-    let run = session.roles.get(role_id)?;
-    let pages = run.browser.pages().await.ok()?;
-    for p in pages {
-        if let Ok(Some(u)) = p.url().await {
-            if u.contains(ROLE_HOME_MARKER) {
-                return Some(p.target_id().clone());
-            }
-        }
-    }
-    None
-}
-
 /// 关闭角色窗口内除 `keep` 外的所有标签页（快照恢复用）。
 /// 若 `keep` 为空，则关闭所有标签页。
 pub async fn close_other_tabs(session: &mut Session, role_id: &str, keep: &[TargetId]) {
@@ -319,8 +292,8 @@ pub async fn close_all_roles(session: &mut Session, store: &ConfigStore, cfg: &m
     }
 }
 
-/// 登录辅助：打开登录页 → 等输入框出现 → 自动填用户名 → 聚焦密码框等用户手输。
-/// 不存储密码。选择器为 None 时自动找（`input[type=password]` + 其前最近的 text/email）。
+/// 登录辅助（角色级 LoginConfig）：打开登录页 → 填用户名 → 填密码。
+/// 选择器为 None 时自动找（`input[type=password]` + 其前最近的 text/email）。
 pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &str) -> Result<()> {
     let role = cfg
         .roles
@@ -345,7 +318,7 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
     let _ = page.activate().await;
     run.active_page = Some(id);
 
-    let js = build_login_js(&login);
+    let js = build_login_js(&login.username, "", login.username_selector.as_deref(), login.password_selector.as_deref());
     // SPA 延迟渲染：轮询等输入框出现（最多 5s）
     let mut last = String::from("pending");
     for _ in 0..50 {
@@ -371,13 +344,66 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
     Err(ChameleonError::CdpOperation { detail: detail.into() })
 }
 
-/// 构造登录辅助注入 JS（用户名/选择器经 JSON 转义安全嵌入）。
-fn build_login_js(login: &LoginConfig) -> String {
-    let u = serde_json::to_string(&login.username).unwrap_or_else(|_| "\"\"".into());
-    let us = serde_json::to_string(login.username_selector.as_deref().unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
-    let ps = serde_json::to_string(login.password_selector.as_deref().unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+/// 登录辅助（预设级 QuickLinkLogin）：打开指定 URL → 填用户名 + 密码。
+pub async fn login_assist_link(
+    session: &mut Session,
+    cfg: &GlobalConfig,
+    role_id: &str,
+    url: &str,
+    login: &QuickLinkLogin,
+) -> Result<()> {
+    let role = cfg
+        .roles
+        .iter()
+        .find(|r| r.id == role_id)
+        .ok_or_else(|| ChameleonError::RoleNotFound { id: role_id.into() })?
+        .clone();
+    if !session.is_role_running(&role.id) {
+        launch_role(session, cfg, &role, true).await?;
+    }
+    let run = session.roles.get_mut(role_id).expect("just launched");
+    let page = run
+        .browser
+        .new_page(CreateTargetParams::new(url))
+        .await
+        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+    let id = page.target_id().clone();
+    let _ = page.activate().await;
+    run.active_page = Some(id);
+
+    let js = build_login_js(&login.username, &login.password, login.username_selector.as_deref(), login.password_selector.as_deref());
+    let mut last = String::from("pending");
+    for _ in 0..50 {
+        match page.evaluate(js.as_str()).await {
+            Ok(r) => {
+                last = r.into_value::<String>().unwrap_or_default();
+                if last == "ok" {
+                    return Ok(());
+                }
+                if last != "no_password" && last != "no_username" {
+                    break;
+                }
+            }
+            Err(_) => {}
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let detail = match last.as_str() {
+        "no_password" => "未找到密码输入框，请手动登录",
+        "no_username" => "未找到用户名输入框，请手动登录",
+        _ => "登录辅助执行失败，请手动登录",
+    };
+    Err(ChameleonError::CdpOperation { detail: detail.into() })
+}
+/// 构造登录辅助注入 JS（用户名/密码/选择器经 JSON 转义安全嵌入）。
+/// 同时填充用户名和密码（不再只填用户名）。
+fn build_login_js(username: &str, password: &str, username_selector: Option<&str>, password_selector: Option<&str>) -> String {
+    let u = serde_json::to_string(username).unwrap_or_else(|_| "\"\"".into());
+    let p = serde_json::to_string(password).unwrap_or_else(|_| "\"\"".into());
+    let us = serde_json::to_string(username_selector.unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+    let ps = serde_json::to_string(password_selector.unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
     format!(
-        r#"(function(u, usel, psel){{
+        r#"(function(u, p, usel, psel){{
   var pw = psel ? document.querySelector(psel) : document.querySelector('input[type=password]');
   if (!pw || !pw.offsetParent) return 'no_password';
   var un = usel ? document.querySelector(usel) : null;
@@ -394,31 +420,12 @@ fn build_login_js(login: &LoginConfig) -> String {
   setter.call(un, u);
   un.dispatchEvent(new Event('input', {{ bubbles: true }}));
   un.dispatchEvent(new Event('change', {{ bubbles: true }}));
-  pw.focus();
+  setter.call(pw, p);
+  pw.dispatchEvent(new Event('input', {{ bubbles: true }}));
+  pw.dispatchEvent(new Event('change', {{ bubbles: true }}));
   return 'ok';
-}})({}, {}, {})"#,
-        u, us, ps
+}})({}, {}, {}, {})"#,
+        u, p, us, ps
     )
 }
 
-/// 角色首页锚点页签 URL：文档标题=角色名，启动时窗口标题一眼可辨。
-/// body 带 `data-chameleon-role-home` 标记，供快照过滤与恢复定位锚点页签。
-fn role_home_url(role: &Role) -> String {
-    let html = format!(
-        "<!doctype html><html><head><meta charset=utf-8><title>{} — chameleon</title></head><body data-chameleon-role-home style='margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#1c1b22;color:#ecebf1;font-family:sans-serif'><div style='text-align:center'><div style='width:72px;height:72px;border-radius:16px;background:{};margin:0 auto 14px;box-shadow:0 0 0 3px #00000033'></div><h1 style='margin:0 0 4px'>{}</h1><p style='color:#9a98a8;margin:0'>chameleon 角色窗口 · 切换标签页标题会变</p></div></body></html>",
-        role.name, role.color, role.name
-    );
-    format!("data:text/html;charset=utf-8,{}", data_encode(&html))
-}
-
-/// data URL 百分号编码：非字母数字符号按 UTF-8 字节 %XX（避免引 percent-encoding 新依赖）。
-fn data_encode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        match b {
-            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
-            _ => out.push_str(&format!("%{:02X}", b)),
-        }
-    }
-    out
-}

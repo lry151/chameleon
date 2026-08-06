@@ -25,4 +25,6 @@ serde_json.workspace = true
 chameleon-core = { path = "../crates/core" }
 tokio.workspace = true
 [target.'cfg(windows)'.dependencies]
+window-vibrancy = "0.6"
+windows-version = "0.1"
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

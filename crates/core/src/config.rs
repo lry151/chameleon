@@ -166,6 +166,7 @@ pub fn default_data_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{ThemeMode, UiPreferences};
     use tempfile::tempdir;
 
     #[test]
@@ -222,5 +223,68 @@ mod tests {
     fn sanitize_removes_path_separators() {
         assert_eq!(sanitize_dir_name("ERP/管理员"), "ERP-管理员");
         assert_eq!(sanitize_dir_name(".."), "role");
+    }
+
+    #[test]
+    fn ui_preferences_default_values() {
+        let prefs = UiPreferences::default();
+        assert_eq!(prefs.theme, ThemeMode::Dark);
+        assert!((prefs.panel_opacity - 0.72).abs() < f32::EPSILON);
+        assert_eq!(prefs.accent_color, "#1abc9c");
+    }
+
+    #[test]
+    fn ui_preferences_serialization_roundtrip() {
+        let prefs = UiPreferences {
+            theme: ThemeMode::Light,
+            panel_opacity: 0.85,
+            accent_color: "#3498db".into(),
+        };
+        let json = serde_json::to_string(&prefs).unwrap();
+        let loaded: UiPreferences = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded, prefs);
+    }
+
+    #[test]
+    fn old_config_without_ui_preferences_loads_defaults() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        // 写入一个旧格式配置（无 ui_preferences 字段）
+        let old_json = r#"{
+            "browser_path": null,
+            "data_root": "data",
+            "roles": [],
+            "systems": []
+        }"#;
+        fs::write(&path, old_json).unwrap();
+        let store = ConfigStore::new(&path);
+        let cfg = store.load().unwrap();
+        assert_eq!(cfg.ui_preferences.theme, ThemeMode::Dark);
+        assert!((cfg.ui_preferences.panel_opacity - 0.72).abs() < f32::EPSILON);
+        assert_eq!(cfg.ui_preferences.accent_color, "#1abc9c");
+    }
+
+    #[test]
+    fn ui_preferences_persisted_across_save_load() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config.json"));
+        let mut cfg = GlobalConfig::default();
+        cfg.ui_preferences = UiPreferences {
+            theme: ThemeMode::System,
+            panel_opacity: 0.6,
+            accent_color: "#e74c3c".into(),
+        };
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.ui_preferences, cfg.ui_preferences);
+    }
+
+    #[test]
+    fn all_theme_modes_serialize() {
+        for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::System] {
+            let json = serde_json::to_string(&mode).unwrap();
+            let back: ThemeMode = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, mode);
+        }
     }
 }

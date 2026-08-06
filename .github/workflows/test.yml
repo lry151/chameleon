@@ -13,7 +13,6 @@ jobs:
     name: Test chameleon-core
     runs-on: ubuntu-latest
     env:
-      # 集成测试跑真实无头 Chromium
       CHAMELEON_HEADLESS: "1"
       CHAMELEON_NO_SANDBOX: "1"
     steps:
@@ -26,6 +25,8 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./ -> target"
+          shared-key: ci-linux
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       # Linux 上 detect_browser 命中 /usr/bin/google-chrome；装 Chrome 供集成测试用
       - name: Install Chromium

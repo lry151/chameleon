@@ -114,14 +114,20 @@ function systemBox(s, state) {
   left.appendChild(el("span", "meta", `${roles.length} 角色`));
   head.appendChild(left);
   const acts = el("div", "actions");
-  acts.appendChild(btn("启动组", "primary small", () =>
+  acts.appendChild(btn("一键启动", "primary small", () =>
     invoke("launch_system", { systemId: s.id }).then((r) => {
       toast(`已启动 ${r.ok} 个角色${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh();
+    }).catch((e) => toast(String(e), "err"))
+  ));
+  acts.appendChild(btn("一键关闭", "danger small", () =>
+    invoke("close_system", { systemId: s.id }).then((r) => {
+      toast(`已关闭 ${r.ok} 个角色${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh();
     }).catch((e) => toast(String(e), "err"))
   ));
   acts.appendChild(btn("预设", "small", () => openLinks({ kind: "system", id: s.id, name: s.name })));
   acts.appendChild(btn("编辑", "ghost small", () => openSystemDialog(s)));
   acts.appendChild(btn("删除", "danger small", () => { if (confirm(`确定删除系统「${s.name}」？角色保留但变为未分组。`)) run(invoke("delete_system", { id: s.id }), `已删除系统「${s.name}」`); }));
+  acts.appendChild(btn("＋角色", "small", () => openRoleDialog({ system_id: s.id })));
   head.appendChild(acts);
   box.appendChild(head);
   const sysLinks = s.quick_links || [];
@@ -138,7 +144,7 @@ function systemBox(s, state) {
   }
   const grid = el("div", "role-grid");
   for (const r of roles) grid.appendChild(roleCard(r, state));
-  if (!roles.length) grid.appendChild(el("div", "empty muted small", "系统内还没有角色，点右上角「新建角色」并选此系统"));
+  if (!roles.length) grid.appendChild(el("div", "empty muted small", "系统内还没有角色，点上方的「＋角色」添加"));
   box.appendChild(grid);
   return box;
 }
@@ -165,16 +171,17 @@ function roleCard(r, state) {
   if (sysLinks.length || roleLinks.length) {
     const chips = el("div", "preset-chips");
     for (const q of sysLinks) {
-      const c = el("span", "chip sys", q.name + (q.auto_open ? " ⚡" : ""));
+      const c = el("span", "chip sys", q.name + (q.auto_open ? " " : ""));
       c.title = q.url;
       c.onclick = () => run(invoke("open_quick_link", { roleId: r.id, name: q.name }), `已打开「${q.name}」`);
       chips.appendChild(c);
     }
     for (const q of roleLinks) {
-      const c = el("span", "chip", q.name + (q.auto_open ? " ⚡" : ""));
+      const label = q.name + (q.auto_open ? " " : "") + (q.login ? " " : "");
+      const c = el("span", "chip", label);
       c.style.borderColor = r.color;
-      c.title = q.url;
-      c.onclick = () => run(invoke("open_quick_link", { roleId: r.id, name: q.name }), `已打开「${q.name}」`);
+      c.title = q.url + (q.login ? "（含自动登录）" : "");
+      c.onclick = () => run(invoke("open_quick_link", { roleId: r.id, name: q.name }), q.login ? `已为「${q.name}」自动登录` : `已打开「${q.name}」`);
       chips.appendChild(c);
     }
     card.appendChild(chips);
@@ -184,8 +191,7 @@ function roleCard(r, state) {
   else actions.appendChild(btn("启动", "primary small", () => run(invoke("launch_role_cmd", { id: r.id }), `已启动「${r.name}」`)));
   actions.appendChild(btn("接力", "small", () => openHandoff(r)));
   actions.appendChild(btn("预设", "small", () => openLinks({ kind: "role", id: r.id, name: r.name })));
-  if (r.login) actions.appendChild(btn("登录", "accent small", () => run(invoke("login_assist_cmd", { roleId: r.id }), `已为「${r.name}」执行登录辅助`)));
-  actions.appendChild(btn("登录配置", "ghost small", () => openLoginDialog(r)));
+  actions.appendChild(btn("克隆", "ghost small", () => { const { id, ...rest } = r; openRoleDialog({ ...rest, name: r.name + " (副本)", id: undefined }, r.id); }));
   actions.appendChild(btn("编辑", "ghost small", () => openRoleDialog(r)));
   actions.appendChild(btn("删除", "danger small", () => deleteRole(r)));
   card.appendChild(actions);
@@ -276,12 +282,20 @@ $("role-form").onsubmit = async (e) => {
     const existing = LAST.roles.find((r) => r.id === id);
     await run(invoke("update_role", { role: { ...existing, name, color, system_id: systemId } }), `已更新「${name}」`);
   } else {
+    const cloneFrom = $("role-dialog").dataset.cloneFrom;
+    const source = cloneFrom ? LAST.roles.find((r) => r.id === cloneFrom) : null;
     const created = await run(invoke("create_role", { name, color }), `已创建「${name}」`);
     if (created && systemId) await run(invoke("update_role", { role: { ...created, system_id: systemId } }));
+    if (created && source) {
+      for (const q of (source.quick_links || [])) await invoke("add_quick_link", { roleId: created.id, name: q.name, url: q.url, autoOpen: q.auto_open, login: q.login || null }).catch(() => {});
+      if (source.login) await invoke("set_role_login", { roleId: created.id, login: source.login }).catch(() => {});
+      if (source.quick_links?.length || source.login) await refresh();
+    }
   }
 };
-function openRoleDialog(role) {
-  $("role-dialog-title").textContent = role ? "编辑角色" : "新建角色";
+function openRoleDialog(role, cloneFromId) {
+  const title = role?.id ? "编辑角色" : cloneFromId ? "克隆角色" : "新建角色";
+  $("role-dialog-title").textContent = title;
   $("role-name").value = role ? role.name : "";
   $("role-color").value = role ? role.color : "#e74c3c";
   const sel = $("role-system");
@@ -302,7 +316,8 @@ function openRoleDialog(role) {
       sel.value = sys.id;
     } catch (e) { toast(String(e), "err"); sel.value = ""; }
   };
-  $("role-dialog").dataset.id = role ? role.id : "";
+  $("role-dialog").dataset.id = role?.id || "";
+  $("role-dialog").dataset.cloneFrom = cloneFromId || "";
   $("role-dialog").showModal();
 }
 async function deleteRole(r) {
@@ -339,9 +354,16 @@ function openLinks(owner) {
   linksOwner = owner;
   $("links-owner").textContent = owner.name;
   renderLinksList();
-  $("link-name").value = ""; $("link-url").value = ""; $("link-auto").checked = false;
+  resetLinkForm();
   $("links-dialog").dataset.editing = "";
   $("links-dialog").showModal();
+}
+function resetLinkForm() {
+  $("link-name").value = ""; $("link-url").value = "";
+  $("link-auto").checked = false; $("link-login-toggle").checked = false;
+  $("link-login-user").value = ""; $("link-login-pass").value = "";
+  $("link-login-usel").value = ""; $("link-login-psel").value = "";
+  $("links-login-fields").classList.remove("visible");
 }
 function ownerLinks() {
   if (linksOwner.kind === "system") return LAST.systems.find((s) => s.id === linksOwner.id)?.quick_links || [];
@@ -355,11 +377,25 @@ function renderLinksList() {
   for (const q of links) {
     const row = el("div", "list-item");
     const meta = el("div", "meta");
-    meta.appendChild(el("span", null, q.name + (q.auto_open ? " ⚡" : "")));
-    meta.appendChild(el("small", null, q.url));
+    let label = q.name;
+    if (q.auto_open) label += " ";
+    if (q.login) label += " ";
+    meta.appendChild(el("span", null, label));
+    meta.appendChild(el("small", null, q.url + (q.login ? "（含自动登录）" : "")));
     row.appendChild(meta);
     const a = el("div", "actions");
-    a.appendChild(btn("编辑", "small", () => { $("link-name").value = q.name; $("link-url").value = q.url; $("link-auto").checked = q.auto_open; $("links-dialog").dataset.editing = q.name; }));
+    a.appendChild(btn("编辑", "small", () => {
+      $("link-name").value = q.name; $("link-url").value = q.url;
+      $("link-auto").checked = q.auto_open;
+      const lg = q.login || {};
+      $("link-login-toggle").checked = !!q.login;
+      $("link-login-user").value = lg.username || "";
+      $("link-login-pass").value = lg.password || "";
+      $("link-login-usel").value = lg.username_selector || "";
+      $("link-login-psel").value = lg.password_selector || "";
+      $("links-login-fields").classList.toggle("visible", !!q.login);
+      $("links-dialog").dataset.editing = q.name;
+    }));
     a.appendChild(btn("删除", "danger small", () => removeLink(q.name)));
     row.appendChild(a);
     box.appendChild(row);
@@ -373,47 +409,49 @@ async function removeLink(name) {
   renderLinksList();
 }
 $("links-close").onclick = () => $("links-dialog").close();
+$("link-login-toggle").onchange = () => $("links-login-fields").classList.toggle("visible", $("link-login-toggle").checked);
 $("links-form").onsubmit = async (e) => {
   e.preventDefault();
   const name = $("link-name").value.trim();
   const url = $("link-url").value.trim();
   const autoOpen = $("link-auto").checked;
   const editing = $("links-dialog").dataset.editing;
+  let login = null;
+  if ($("link-login-toggle").checked && linksOwner.kind !== "system") {
+    const username = $("link-login-user").value.trim();
+    const password = $("link-login-pass").value;
+    if (username) {
+      login = {
+        username,
+        password,
+        username_selector: $("link-login-usel").value.trim() || null,
+        password_selector: $("link-login-psel").value.trim() || null,
+      };
+    }
+  }
   if (editing) {
     const cmd = linksOwner.kind === "system" ? "edit_system_quick_link" : "edit_quick_link";
-    const arg = linksOwner.kind === "system" ? { systemId: linksOwner.id, oldName: editing, name, url, autoOpen } : { roleId: linksOwner.id, oldName: editing, name, url, autoOpen };
+    const arg = linksOwner.kind === "system"
+      ? { systemId: linksOwner.id, oldName: editing, name, url, autoOpen }
+      : { roleId: linksOwner.id, oldName: editing, name, url, autoOpen, login };
     await run(invoke(cmd, arg), `已更新预设「${name}」`);
   } else {
     const cmd = linksOwner.kind === "system" ? "add_system_quick_link" : "add_quick_link";
-    const arg = linksOwner.kind === "system" ? { systemId: linksOwner.id, name, url, autoOpen } : { roleId: linksOwner.id, name, url, autoOpen };
+    const arg = linksOwner.kind === "system"
+      ? { systemId: linksOwner.id, name, url, autoOpen }
+      : { roleId: linksOwner.id, name, url, autoOpen, login };
     await run(invoke(cmd, arg), `已添加预设「${name}」`);
   }
   LAST = await invoke("get_state");
   renderLinksList();
-  $("link-name").value = ""; $("link-url").value = ""; $("link-auto").checked = false;
+  resetLinkForm();
   $("links-dialog").dataset.editing = "";
 };
 
-// —— 登录辅助配置 ——
-let loginRole = null;
-function openLoginDialog(role) {
-  loginRole = role;
-  $("login-role").textContent = role.name;
-  const lg = role.login || {};
-  $("login-url").value = lg.login_url || "";
-  $("login-username").value = lg.username || "";
-  $("login-usel").value = lg.username_selector || "";
-  $("login-psel").value = lg.password_selector || "";
-  $("login-dialog").showModal();
-}
-$("login-cancel").onclick = () => $("login-dialog").close();
-$("login-clear").onclick = async () => { $("login-dialog").close(); await run(invoke("set_role_login", { roleId: loginRole.id, login: null }), `已清除「${loginRole.name}」的登录配置`); };
-$("login-form").onsubmit = async (e) => {
-  e.preventDefault();
-  const login = { login_url: $("login-url").value.trim(), username: $("login-username").value.trim(), username_selector: $("login-usel").value.trim() || null, password_selector: $("login-psel").value.trim() || null };
-  $("login-dialog").close();
-  await run(invoke("set_role_login", { roleId: loginRole.id, login }), `已保存「${loginRole.name}」的登录配置`);
-};
+// —— 窗口控制 ——
+$("btn-min").onclick = () => invoke("app_minimize");
+$("btn-max").onclick = () => invoke("app_maximize");
+$("btn-close").onclick = () => invoke("app_hide");
 
 // —— 工具栏全局操作 ——
 $("btn-launch-all").onclick = () => invoke("launch_all").then((r) => { toast(`已启动 ${r.ok} 个角色${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
@@ -437,5 +475,95 @@ $("btn-import").onclick = async () => {
     toast(typeof e === "string" ? e : String(e), "err");
   }
 };
+
+// —— 窗口拖动（topbar 空白区域） ——
+const { getCurrentWindow } = window.__TAURI__.window;
+document.querySelector(".topbar").addEventListener("mousedown", (e) => {
+    if (e.target.closest("button, input, select, .win-controls")) return;
+    getCurrentWindow().startDragging();
+});
+// —— UI 偏好设置 ——
+let uiPrefs = { theme: "Dark", panel_opacity: 0.72, accent_color: "#1abc9c" };
+let systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(theme) {
+    let resolved = theme;
+    if (theme === "System") resolved = systemThemeMq.matches ? "Dark" : "Light";
+    document.documentElement.dataset.theme = resolved.toLowerCase();
+}
+
+function applyOpacity(v) {
+    document.documentElement.style.setProperty("--panel-opacity", String(v));
+    const label = $("opacity-value");
+    if (label) label.textContent = Math.round(v * 100) + "%";
+}
+
+/// 将十六进制颜色按 factor 变暗（factor 0–1，越小越暗）。
+function darkenColor(hex, factor) {
+    const r = Math.round(parseInt(hex.slice(1, 3), 16) * factor);
+    const g = Math.round(parseInt(hex.slice(3, 5), 16) * factor);
+    const b = Math.round(parseInt(hex.slice(5, 7), 16) * factor);
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+function applyAccent(color) {
+    document.documentElement.style.setProperty("--accent", color);
+    document.documentElement.style.setProperty("--accent-2", darkenColor(color, 0.85));
+    document.querySelectorAll(".accent-dot").forEach((d) => {
+        d.classList.toggle("active", d.dataset.color === color);
+    });
+}
+
+function applyPrefs(prefs) {
+    uiPrefs = prefs;
+    applyTheme(prefs.theme);
+    applyOpacity(prefs.panel_opacity);
+    applyAccent(prefs.accent_color);
+    // 同步 dialog 控件
+    const radio = document.querySelector(`input[name="theme"][value="${prefs.theme}"]`);
+    if (radio) radio.checked = true;
+    const slider = $("opacity-slider");
+    if (slider) slider.value = String(prefs.panel_opacity);
+}
+
+async function savePrefs() {
+    try { await invoke("set_ui_preferences", { prefs: uiPrefs }); } catch (e) { toast(String(e), "err"); }
+}
+
+async function loadPrefs() {
+    try {
+        const prefs = await invoke("get_ui_preferences");
+        applyPrefs(prefs);
+    } catch (e) { /* 旧版本或错误 → 保持默认 */ }
+}
+
+// 设置 dialog 交互
+$("btn-settings").onclick = () => $("settings-dialog").showModal();
+$("settings-close").onclick = () => $("settings-dialog").close();
+
+document.querySelectorAll('input[name="theme"]').forEach((r) => {
+    r.onchange = () => { uiPrefs.theme = r.value; applyTheme(r.value); savePrefs(); };
+});
+
+$("opacity-slider").oninput = (e) => {
+    const v = parseFloat(e.target.value);
+    uiPrefs.panel_opacity = v;
+    applyOpacity(v);
+};
+$("opacity-slider").onchange = () => savePrefs();
+
+$("accent-picker").addEventListener("click", (e) => {
+    const dot = e.target.closest(".accent-dot");
+    if (!dot) return;
+    uiPrefs.accent_color = dot.dataset.color;
+    applyAccent(dot.dataset.color);
+    savePrefs();
+});
+
+systemThemeMq.addEventListener("change", () => {
+    if (uiPrefs.theme === "System") applyTheme("System");
+});
+
+loadPrefs();
 
 refresh();
