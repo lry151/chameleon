@@ -29,7 +29,7 @@ pub async fn start_all(session: &mut Session, cfg: &GlobalConfig) -> BatchResult
         if session.is_role_running(&role.id) {
             continue;
         }
-        match launcher::launch_role(session, cfg, role).await {
+        match launcher::launch_role(session, cfg, role, true).await {
             Ok(()) => out.ok += 1,
             Err(e) => out.push_error(e),
         }
@@ -47,7 +47,7 @@ pub async fn start_system(session: &mut Session, cfg: &GlobalConfig, system_id: 
         if session.is_role_running(&role.id) {
             continue;
         }
-        match launcher::launch_role(session, cfg, role).await {
+        match launcher::launch_role(session, cfg, role, true).await {
             Ok(()) => out.ok += 1,
             Err(e) => out.push_error(e),
         }
@@ -55,12 +55,22 @@ pub async fn start_system(session: &mut Session, cfg: &GlobalConfig, system_id: 
     out
 }
 
-/// 一键关闭所有：CDP 优雅关闭全部测试窗口（记录各自窗口位置）。
+/// 一键关闭所有：CDP 优雅关闭全部测试窗口（记录各自窗口位置），
+/// 再逐个关闭沙箱窗口并删除其临时数据目录。单个沙箱已退出/失败不中断整批。
 pub async fn close_all(session: &mut Session, store: &ConfigStore, cfg: &mut GlobalConfig) -> BatchResult {
     let mut out = BatchResult::default();
     let ids: Vec<String> = session.roles.keys().cloned().collect();
     for id in ids {
         match launcher::close_role(session, store, cfg, &id).await {
+            Ok(()) => out.ok += 1,
+            Err(e) => out.push_error(e),
+        }
+    }
+    // 清场彻底：沙箱也逐个关闭（close 会删临时数据目录）；已退出的沙箱
+    // 已不在 session.sandboxes 中，自然不会报错中断整批。
+    let sb_ids: Vec<String> = session.sandboxes.keys().cloned().collect();
+    for id in sb_ids {
+        match crate::sandbox::close(session, &id).await {
             Ok(()) => out.ok += 1,
             Err(e) => out.push_error(e),
         }

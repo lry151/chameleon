@@ -124,21 +124,26 @@ impl SnapshotStore {
                 }
             }
             if !session.is_role_running(&role.id) {
-                launcher::launch_role(session, cfg, &role).await?;
+                // auto_open=false：不叠加默认预设，只开快照页与角色首页锚点（ADR-0005）。
+                launcher::launch_role(session, cfg, &role, false).await?;
+            }
+            // 锚点页签纳入 keep 集，避免被 close_other_tabs 当多余标签关闭（保住窗口标题角色名）。
+            let mut keep: Vec<TargetId> = Vec::new();
+            if let Some(anchor) = launcher::find_role_home_tab(session, &role.id).await {
+                keep.push(anchor);
             }
             if sr.tabs.is_empty() {
                 continue;
             }
-            let mut opened: Vec<TargetId> = Vec::new();
             for url in &sr.tabs {
                 launcher::open_tab(session, cfg, &role.id, url).await?;
                 if let Some(run) = session.roles.get(&role.id) {
                     if let Some(active) = &run.active_page {
-                        opened.push(active.clone());
+                        keep.push(active.clone());
                     }
                 }
             }
-            launcher::close_other_tabs(session, &role.id, &opened).await;
+            launcher::close_other_tabs(session, &role.id, &keep).await;
         }
         store.save(cfg)?;
         Ok(())

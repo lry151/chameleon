@@ -20,6 +20,9 @@ fn headless() -> bool {
     std::env::var_os("CHAMELEON_HEADLESS").is_some()
 }
 
+/// 角色首页锚点页签的识别标记（data URL 中该属性名原样保留，用于快照过滤/恢复定位）。
+const ROLE_HOME_MARKER: &str = "data-chameleon-role-home";
+
 /// 构建角色的隔离启动参数。
 fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<BrowserConfig> {
     safety::validate_role(role, cfg)?;
@@ -66,8 +69,15 @@ fn spawn_handler(handler: chromiumoxide::Handler) {
 }
 
 /// 启动角色窗口；已启动则幂等返回。端口被占用且 CDP 可达时接管既有实例。
-/// 首次启动（非接管）后自动打开标记 `auto_open` 的预设（角色级 + 所属系统级）。
-pub async fn launch_role(session: &mut Session, cfg: &GlobalConfig, role: &Role) -> Result<()> {
+/// 首次启动（非接管）后打开角色首页锚点页签；`auto_open=true` 时再自动打开
+/// 标记 `auto_open` 的预设（角色级 + 所属系统级）。`auto_open=false`（快照恢复）
+/// 抑制默认预设，避免默认页与快照页叠加（ADR-0005）。
+pub async fn launch_role(
+    session: &mut Session,
+    cfg: &GlobalConfig,
+    role: &Role,
+    auto_open: bool,
+) -> Result<()> {
     if session.roles.contains_key(&role.id) {
         return Ok(());
     }
@@ -83,7 +93,12 @@ pub async fn launch_role(session: &mut Session, cfg: &GlobalConfig, role: &Role)
                 );
                 return Ok(()); // 接管既有实例，不重复打开预设
             }
-            Err(_) => { /* 端口被非浏览器占用，继续尝试启动 */ }
+            Err(_) => {
+                // ADR-0006：端口被非浏览器/僵尸实例占用且无法接管 → 硬错误，
+                // 不再 fall-through 到 Browser::launch（在占用端口/锁定目录上反复
+                // spawn 瞬时窗口 = 「窗口一直闪」根因）。
+                return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
+            }
         }
     }
     let config = build_config(role, &browser_path, cfg)?;
@@ -95,8 +110,6 @@ pub async fn launch_role(session: &mut Session, cfg: &GlobalConfig, role: &Role)
         role.id.clone(),
         RunningRole { browser, active_page: None },
     );
-    // 首次启动 → 自动打开标记 auto_open 的预设（角色级 + 系统级）；失败跳过不阻塞。
-    // 直接 new_page（不走 open_tab）避免 async 互递归。
     // 角色首页锚点页签：文档标题=角色名，启动时窗口一眼可辨（切其他页签标题变网站名，Chrome 限制）。
     let home = role_home_url(role);
     if let Some(run) = session.roles.get_mut(&role.id) {
@@ -106,13 +119,17 @@ pub async fn launch_role(session: &mut Session, cfg: &GlobalConfig, role: &Role)
             run.active_page = Some(id);
         }
     }
-    let auto_urls: Vec<String> = collect_auto_open_urls(role, cfg);
-    for url in auto_urls {
-        if let Some(run) = session.roles.get_mut(&role.id) {
-            if let Ok(page) = run.browser.new_page(CreateTargetParams::new(&url)).await {
-                let id = page.target_id().clone();
-                let _ = page.activate().await;
-                run.active_page = Some(id);
+    // 首次启动 → 自动打开标记 auto_open 的预设（角色级 + 系统级）；失败跳过不阻塞。
+    // 直接 new_page（不走 open_tab）避免 async 互递归。
+    if auto_open {
+        let auto_urls: Vec<String> = collect_auto_open_urls(role, cfg);
+        for url in auto_urls {
+            if let Some(run) = session.roles.get_mut(&role.id) {
+                if let Ok(page) = run.browser.new_page(CreateTargetParams::new(&url)).await {
+                    let id = page.target_id().clone();
+                    let _ = page.activate().await;
+                    run.active_page = Some(id);
+                }
             }
         }
     }
@@ -164,7 +181,7 @@ pub async fn open_tab(session: &mut Session, cfg: &GlobalConfig, role_id: &str, 
         .find(|r| r.id == role_id)
         .ok_or_else(|| ChameleonError::RoleNotFound { id: role_id.into() })?;
     if !session.roles.contains_key(role_id) {
-        launch_role(session, cfg, role).await?;
+        launch_role(session, cfg, role, true).await?;
     }
     let run = session.roles.get_mut(role_id).expect("just launched");
     let page = run
@@ -211,7 +228,8 @@ pub fn drop_role(session: &mut Session, role_id: &str) {
     session.roles.remove(role_id);
 }
 
-/// 读取角色所有标签页 URL（快照用）。
+/// 读取角色所有标签页 URL（快照用）。跳过 chameleon 角色首页锚点页签
+/// （data URL 含标记），快照只记真实测试页。
 pub async fn list_tab_urls(session: &Session, role_id: &str) -> Vec<String> {
     let Some(run) = session.roles.get(role_id) else {
         return Vec::new();
@@ -222,12 +240,27 @@ pub async fn list_tab_urls(session: &Session, role_id: &str) -> Vec<String> {
     let mut urls = Vec::new();
     for p in pages {
         if let Ok(Some(u)) = p.url().await {
-            if !u.is_empty() && u != "about:blank" {
+            if !u.is_empty() && u != "about:blank" && !u.contains(ROLE_HOME_MARKER) {
                 urls.push(u);
             }
         }
     }
     urls
+}
+
+/// 定位角色首页锚点页签的 target id（快照恢复时纳入 close_other_tabs 的 keep 集，
+/// 保住窗口标题角色名）。无锚点页签返回 None。
+pub async fn find_role_home_tab(session: &Session, role_id: &str) -> Option<TargetId> {
+    let run = session.roles.get(role_id)?;
+    let pages = run.browser.pages().await.ok()?;
+    for p in pages {
+        if let Ok(Some(u)) = p.url().await {
+            if u.contains(ROLE_HOME_MARKER) {
+                return Some(p.target_id().clone());
+            }
+        }
+    }
+    None
 }
 
 /// 关闭角色窗口内除 `keep` 外的所有标签页（快照恢复用）。
@@ -269,7 +302,7 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
         .clone()
         .ok_or_else(|| ChameleonError::ConfigInvalid { detail: "该角色未配置登录辅助".into() })?;
     if !session.is_role_running(&role.id) {
-        launch_role(session, cfg, &role).await?;
+        launch_role(session, cfg, &role, true).await?;
     }
     let run = session.roles.get_mut(role_id).expect("just launched");
     let page = run
@@ -338,9 +371,10 @@ fn build_login_js(login: &LoginConfig) -> String {
 }
 
 /// 角色首页锚点页签 URL：文档标题=角色名，启动时窗口标题一眼可辨。
+/// body 带 `data-chameleon-role-home` 标记，供快照过滤与恢复定位锚点页签。
 fn role_home_url(role: &Role) -> String {
     let html = format!(
-        "<!doctype html><html><head><meta charset=utf-8><title>{} — chameleon</title></head><body style='margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#1c1b22;color:#ecebf1;font-family:sans-serif'><div style='text-align:center'><div style='width:72px;height:72px;border-radius:16px;background:{};margin:0 auto 14px;box-shadow:0 0 0 3px #00000033'></div><h1 style='margin:0 0 4px'>{}</h1><p style='color:#9a98a8;margin:0'>chameleon 角色窗口 · 切换标签页标题会变</p></div></body></html>",
+        "<!doctype html><html><head><meta charset=utf-8><title>{} — chameleon</title></head><body data-chameleon-role-home style='margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#1c1b22;color:#ecebf1;font-family:sans-serif'><div style='text-align:center'><div style='width:72px;height:72px;border-radius:16px;background:{};margin:0 auto 14px;box-shadow:0 0 0 3px #00000033'></div><h1 style='margin:0 0 4px'>{}</h1><p style='color:#9a98a8;margin:0'>chameleon 角色窗口 · 切换标签页标题会变</p></div></body></html>",
         role.name, role.color, role.name
     );
     format!("data:text/html;charset=utf-8,{}", data_encode(&html))
