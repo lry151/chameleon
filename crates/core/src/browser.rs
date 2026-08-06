@@ -13,7 +13,6 @@ pub struct BrowserCandidate {
 /// 常见安装位置（Windows）。按序探测。
 fn known_install_paths() -> Vec<(String, PathBuf)> {
     let mut paths = Vec::new();
-    // 按用户安装（%LOCALAPPDATA%）：现代 Chrome/Edge 的默认安装位置
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         let base = PathBuf::from(local);
         paths.push(("Chrome".into(), base.join("Google").join("Chrome").join("Application").join("chrome.exe")));
@@ -48,7 +47,6 @@ fn dev_paths() -> Vec<(String, PathBuf)> {
         ("Chrome".into(), PathBuf::from("/opt/google/chrome/chrome")),
     ]
 }
-
 /// 列出所有检测到的浏览器候选（去重）。
 /// 优先级：手动指定 → 注册表 App Paths → 常见安装位置 → PATH → 开发环境。
 pub fn list_browser_candidates(manual_override: Option<&Path>) -> Vec<BrowserCandidate> {

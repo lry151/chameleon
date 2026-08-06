@@ -27,18 +27,14 @@ const ROLE_HOME_MARKER: &str = "data-chameleon-role-home";
 fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<BrowserConfig> {
     safety::validate_role(role, cfg)?;
     let mut b = BrowserConfig::builder();
-    b = if headless() {
-        b.new_headless_mode()
-    } else {
-        b.with_head()
-    };
+    b = if headless() { b.new_headless_mode() } else { b.with_head() };
     let mut b = b
         .viewport(None)
         .port(role.cdp_port)
         .user_data_dir(&role.profile_dir)
         .chrome_executable(browser_path);
     if std::env::var_os("CHAMELEON_NO_SANDBOX").is_some() {
-        // ponytail: 测试环境（snap chromium / root / CI）需要 --no-sandbox；生产绝不设置此变量。
+        // ponytail: 测试环境需要 --no-sandbox；生产绝不设置此变量。
         b = b.no_sandbox();
     }
     let mut b = b
@@ -152,13 +148,16 @@ fn collect_auto_open_urls(role: &Role, cfg: &GlobalConfig) -> Vec<String> {
     v
 }
 
-/// 优雅关闭角色窗口：先记录窗口位置到配置，再 CDP `Browser.close`。
+/// 优雅关闭角色窗口：先记录窗口位置到配置，再 CDP `Browser.close`，
+/// 并轮询 CDP 端口确保真正释放（`Browser::wait` 对 takeover 实例是 no-op，
+/// 需要轮询端口来确保接管场景下端口也被释放，避免紧接的启动误判僵尸占用）。
 pub async fn close_role(
     session: &mut Session,
     store: &ConfigStore,
     cfg: &mut GlobalConfig,
     role_id: &str,
 ) -> Result<()> {
+    let port = cfg.roles.iter().find(|r| r.id == role_id).map(|r| r.cdp_port);
     let Some(run) = session.roles.remove(role_id) else {
         return Err(ChameleonError::RoleNotRunning { id: role_id.into() });
     };
@@ -170,6 +169,19 @@ pub async fn close_role(
     }
     let mut browser = run.browser;
     let _ = tokio::time::timeout(Duration::from_secs(5), browser.close()).await;
+    // 等 Chrome 进程真正退出；对 launched 实例 wait() 等到进程退出，
+    // 对 takeover（connect）实例 wait() 立即返回，靠下面轮询端口兜底。
+    let _ = tokio::time::timeout(Duration::from_secs(5), browser.wait()).await;
+    // 兜底轮询端口：takeover 路径下 wait() 不阻塞，Chrome 异步退出期间
+    // 端口仍占用，轮询到端口释放或最多 2 秒后返回。
+    if let Some(port) = port {
+        for _ in 0..20 {
+            if !port_open(port) {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
     Ok(())
 }
 
@@ -226,6 +238,38 @@ pub async fn read_active_tab(session: &Session, role_id: &str) -> Result<String>
 /// 从会话中移除角色（CDP 已断开等场景）。
 pub fn drop_role(session: &mut Session, role_id: &str) {
     session.roles.remove(role_id);
+}
+
+/// 探测角色浏览器是否可响应（CDP 短超时），防半开连接的操作挂死。
+pub async fn is_role_alive(session: &Session, role_id: &str) -> bool {
+    let Some(run) = session.roles.get(role_id) else {
+        return false;
+    };
+    matches!(
+        tokio::time::timeout(Duration::from_millis(1200), run.browser.version()).await,
+        Ok(Ok(_))
+    )
+}
+
+/// 清理「浏览器已被外部直接关闭」的死角色：对每个运行角色做 CDP 存活探测，
+/// 超时/失败即移除并返回移除数量。UI 刷新与角色命令前调用，避免对死浏览器
+/// 的操作无限挂起（用户直接关 Chrome 后按钮卡死）。
+pub async fn prune_dead_roles(session: &mut Session) -> usize {
+    let mut dead = Vec::new();
+    for (id, run) in &session.roles {
+        let alive = matches!(
+            tokio::time::timeout(Duration::from_millis(1200), run.browser.version()).await,
+            Ok(Ok(_))
+        );
+        if !alive {
+            dead.push(id.clone());
+        }
+    }
+    let n = dead.len();
+    for id in &dead {
+        session.roles.remove(id);
+    }
+    n
 }
 
 /// 读取角色所有标签页 URL（快照用）。跳过 chameleon 角色首页锚点页签
