@@ -27,18 +27,14 @@ const ROLE_HOME_MARKER: &str = "data-chameleon-role-home";
 fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<BrowserConfig> {
     safety::validate_role(role, cfg)?;
     let mut b = BrowserConfig::builder();
-    b = if headless() {
-        b.new_headless_mode()
-    } else {
-        b.with_head()
-    };
+    b = if headless() { b.new_headless_mode() } else { b.with_head() };
     let mut b = b
         .viewport(None)
         .port(role.cdp_port)
         .user_data_dir(&role.profile_dir)
         .chrome_executable(browser_path);
     if std::env::var_os("CHAMELEON_NO_SANDBOX").is_some() {
-        // ponytail: 测试环境（snap chromium / root / CI）需要 --no-sandbox；生产绝不设置此变量。
+        // ponytail: 测试环境需要 --no-sandbox；生产绝不设置此变量。
         b = b.no_sandbox();
     }
     let mut b = b

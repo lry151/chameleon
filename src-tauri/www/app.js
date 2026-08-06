@@ -18,15 +18,15 @@ function toast(msg, kind = "") {
   toastTimer = setTimeout(() => (t.className = "toast"), 2600);
 }
 async function run(promise, okMsg) {
+  let r = null;
   try {
-    const r = await promise;
+    r = await promise;
     if (okMsg) toast(okMsg, "ok");
-    await refresh();
-    return r;
   } catch (e) {
     toast(typeof e === "string" ? e : String(e), "err");
-    return null;
   }
+  await refresh();
+  return r;
 }
 function btn(label, cls, onclick) {
   const b = el("button", cls, label);
@@ -287,7 +287,21 @@ function openRoleDialog(role) {
   const sel = $("role-system");
   sel.innerHTML = '<option value="">未分组</option>';
   for (const s of LAST.systems) sel.add(new Option(s.name, s.id));
+  sel.add(new Option("➕ 新建系统…", "__new__"));
   sel.value = role?.system_id || "";
+  sel.onchange = async () => {
+    if (sel.value !== "__new__") return;
+    const name = prompt("新系统名称");
+    if (!name || !name.trim()) { sel.value = ""; return; }
+    try {
+      const sys = await invoke("create_system", { name: name.trim() });
+      await refresh();
+      sel.innerHTML = '<option value="">未分组</option>';
+      for (const s of LAST.systems) sel.add(new Option(s.name, s.id));
+      sel.add(new Option("➕ 新建系统…", "__new__"));
+      sel.value = sys.id;
+    } catch (e) { toast(String(e), "err"); sel.value = ""; }
+  };
   $("role-dialog").dataset.id = role ? role.id : "";
   $("role-dialog").showModal();
 }

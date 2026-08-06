@@ -34,7 +34,12 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand .logo { font-size: 24px; }
+.brand .logo {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: inset 0 0 0 1px #00000033, 0 1px 2px #00000055;
+  display: inline-block; flex: 0 0 auto;
+}
 .brand h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
 .brand .sub { margin: 0; color: var(--muted); font-size: 11px; }
 .toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -124,6 +129,7 @@ main { padding: 14px 18px; overflow-y: auto; flex: 1; }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 14px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .panel-head h2 { margin: 0; font-size: 14px; }
+.inline-form .check { flex: 1 0 100%; margin-top: 2px; }
 .panel.muted-bg { background: transparent; border-style: dashed; }
 
 .inline-form { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }

@@ -394,15 +394,17 @@ async fn cleanup_temp(state: State<'_, AppState>) -> Result<usize, String> {
 
 #[tauri::command]
 async fn quit_app(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<(), String> {
-    shutdown(&state).await;
+    shutdown(state.session.clone(), state.app_dir.clone()).await;
     app.exit(0);
     Ok(())
 }
 
-async fn shutdown(state: &AppState) {
-    let store = state.store();
+/// 优雅关闭全部角色窗口与沙箱。取 Arc+app_dir 的克隆，便于从托盘菜单
+/// 的 spawn 任务调用，不在主线程 block_on（避免托盘「退出」卡死）。
+async fn shutdown(session: Arc<tokio::sync::Mutex<Session>>, app_dir: PathBuf) {
+    let store = ConfigStore::new(app_dir.join("config.json"));
     let mut cfg = store.load().unwrap_or_default();
-    let mut session = state.session.lock().await;
+    let mut session = session.lock().await;
     launcher::close_all_roles(&mut session, &store, &mut cfg).await;
     let ids: Vec<String> = session.sandboxes.keys().cloned().collect();
     for id in ids {
@@ -492,7 +494,16 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "show" => show_main_window(app),
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        let s = app.state::<AppState>();
+                        let session = s.session.clone();
+                        let app_dir = s.app_dir.clone();
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            shutdown(session, app_dir).await;
+                            app.exit(0);
+                        });
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -534,10 +545,10 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("构建 chameleon 应用失败")
-        .run(|app_handle, event| {
+        .run(|_app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                let state = app_handle.state::<AppState>();
-                tauri::async_runtime::block_on(shutdown(&state));
+                // 清理在显式退出路径（托盘 quit / quit_app 命令）的 spawn 任务里
+                // 已完成；此处不再 block_on，避免主线程阻塞导致托盘「退出」卡死。
             }
         });
 }
