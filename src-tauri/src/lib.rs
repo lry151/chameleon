@@ -66,9 +66,10 @@ pub struct AppStateView {
 async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
-    let mut session = state.session.lock().await;
-    // 先清理被外部直接关闭的死角色，避免 UI 显示陈旧的「运行中」且后续操作挂死
-    launcher::prune_dead_roles(&mut session).await;
+    let session = state.session.lock().await;
+    // 读路径不做 prune（prune 含 1.2s CDP 探测会阻塞其他命令），
+    // 死角色由命令路径（close_role_cmd 等）的 prune 清理，
+    // 用户下一次操作时 UI 会刷新到最新状态。
     let roles = cfg
         .roles
         .iter()
@@ -116,6 +117,7 @@ async fn delete_role(state: State<'_, AppState>, id: String) -> Result<(), Strin
     let mut cfg = store.load().map_err(msg)?;
     {
         let mut session = state.session.lock().await;
+        launcher::prune_dead_roles(&mut session).await;
         if session.is_role_running(&id) {
             let _ = launcher::close_role(&mut session, &store, &mut cfg, &id).await;
         }
@@ -164,6 +166,10 @@ async fn close_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), St
     let mut cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
     launcher::prune_dead_roles(&mut session).await;
+    // prune 可能已移除外部落关闭的死角色，此时不必再报错。
+    if !session.is_role_running(&id) {
+        return Ok(());
+    }
     launcher::close_role(&mut session, &store, &mut cfg, &id).await.map_err(msg)
 }
 
@@ -405,6 +411,8 @@ async fn shutdown(session: Arc<tokio::sync::Mutex<Session>>, app_dir: PathBuf) {
     let store = ConfigStore::new(app_dir.join("config.json"));
     let mut cfg = store.load().unwrap_or_default();
     let mut session = session.lock().await;
+    // 先清理死角色，避免 close_all_roles 对半开连接操作挂起（用户直接关 Chrome 场景）。
+    launcher::prune_dead_roles(&mut session).await;
     launcher::close_all_roles(&mut session, &store, &mut cfg).await;
     let ids: Vec<String> = session.sandboxes.keys().cloned().collect();
     for id in ids {

@@ -148,13 +148,16 @@ fn collect_auto_open_urls(role: &Role, cfg: &GlobalConfig) -> Vec<String> {
     v
 }
 
-/// 优雅关闭角色窗口：先记录窗口位置到配置，再 CDP `Browser.close`。
+/// 优雅关闭角色窗口：先记录窗口位置到配置，再 CDP `Browser.close`，
+/// 并轮询 CDP 端口确保真正释放（`Browser::wait` 对 takeover 实例是 no-op，
+/// 需要轮询端口来确保接管场景下端口也被释放，避免紧接的启动误判僵尸占用）。
 pub async fn close_role(
     session: &mut Session,
     store: &ConfigStore,
     cfg: &mut GlobalConfig,
     role_id: &str,
 ) -> Result<()> {
+    let port = cfg.roles.iter().find(|r| r.id == role_id).map(|r| r.cdp_port);
     let Some(run) = session.roles.remove(role_id) else {
         return Err(ChameleonError::RoleNotRunning { id: role_id.into() });
     };
@@ -166,9 +169,19 @@ pub async fn close_role(
     }
     let mut browser = run.browser;
     let _ = tokio::time::timeout(Duration::from_secs(5), browser.close()).await;
-    // 等 Chrome 进程真正退出、端口释放，避免 close 后端口仍被将死进程占据
-    // （否则紧接的启动/恢复会误判为僵尸占用 → PortTakenNotRole）。
+    // 等 Chrome 进程真正退出；对 launched 实例 wait() 等到进程退出，
+    // 对 takeover（connect）实例 wait() 立即返回，靠下面轮询端口兜底。
     let _ = tokio::time::timeout(Duration::from_secs(5), browser.wait()).await;
+    // 兜底轮询端口：takeover 路径下 wait() 不阻塞，Chrome 异步退出期间
+    // 端口仍占用，轮询到端口释放或最多 2 秒后返回。
+    if let Some(port) = port {
+        for _ in 0..20 {
+            if !port_open(port) {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
     Ok(())
 }
 

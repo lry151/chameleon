@@ -25,7 +25,7 @@ async function run(promise, okMsg) {
   } catch (e) {
     toast(typeof e === "string" ? e : String(e), "err");
   }
-  await refresh();
+  try { await refresh(); } catch (_) { /* 后端异常时不阻塞 UI 反馈 */ }
   return r;
 }
 function btn(label, cls, onclick) {
