@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>变色龙</title>
+  <title>chameleon</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
     <div class="brand">
       <span class="logo">🦎</span>
       <div>
-        <h1>变色龙</h1>
+        <h1>chameleon</h1>
         <p class="sub">Chrome 会话隔离管理工具</p>
       </div>
     </div>
@@ -19,7 +19,7 @@
       <button id="btn-launch-all" class="primary">一键启动所有</button>
       <button id="btn-close-all">一键关闭所有</button>
       <button id="btn-sandbox">启动临时沙箱</button>
-      <button id="btn-cleanup">清理临时数据目录</button>
+      <button id="btn-cleanup">清理临时目录</button>
       <button id="btn-export">导出配置</button>
       <button id="btn-import">导入配置</button>
     </div>
@@ -27,11 +27,20 @@
 
   <section class="browser-bar">
     <div class="label">浏览器：</div>
-    <span id="browser-path" class="muted">检测中…</span>
-    <button id="btn-pick-browser" class="ghost">选择 Chrome 路径</button>
+    <select id="browser-select" class="browser-select"></select>
+    <button id="btn-pick-browser" class="ghost small">浏览…</button>
+    <span id="browser-status" class="muted small"></span>
   </section>
 
   <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>系统（被测应用）</h2>
+        <button id="btn-new-system" class="accent">+ 新建系统</button>
+      </div>
+      <div id="systems" class="list"></div>
+    </section>
+
     <section class="panel">
       <div class="panel-head">
         <h2>角色</h2>
@@ -61,16 +70,13 @@
     </section>
   </main>
 
-  <!-- 新建/编辑角色弹层 -->
+  <!-- 新建/编辑角色 -->
   <dialog id="role-dialog" class="dialog">
     <form id="role-form">
       <h3 id="role-dialog-title">新建角色</h3>
-      <label>名称（中文名）
-        <input id="role-name" type="text" required placeholder="如：ERP-管理员" />
-      </label>
-      <label>颜色色块
-        <input id="role-color" type="color" value="#e74c3c" />
-      </label>
+      <label>名称（中文名）<input id="role-name" type="text" required placeholder="如：ERP-管理员" /></label>
+      <label>颜色色块<input id="role-color" type="color" value="#e74c3c" /></label>
+      <label>所属系统<select id="role-system"><option value="">未分组</option></select></label>
       <div class="dialog-actions">
         <button type="button" id="role-cancel" class="ghost">取消</button>
         <button type="submit" class="primary">保存</button>
@@ -78,7 +84,19 @@
     </form>
   </dialog>
 
-  <!-- 接力弹层 -->
+  <!-- 新建/编辑系统 -->
+  <dialog id="system-dialog" class="dialog">
+    <form id="system-form">
+      <h3 id="system-dialog-title">新建系统</h3>
+      <label>系统名称<input id="system-name" type="text" required placeholder="如：ERP系统" /></label>
+      <div class="dialog-actions">
+        <button type="button" id="system-cancel" class="ghost">取消</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 接力 -->
   <dialog id="handoff-dialog" class="dialog">
     <div class="handoff">
       <h3>会话接力</h3>
@@ -86,25 +104,24 @@
         <div>源角色：<b id="handoff-source"></b></div>
         <div>当前标签页：<span id="handoff-url" class="muted small"></span></div>
       </div>
-      <label>目标角色
-        <select id="handoff-target"></select>
-      </label>
+      <label>目标角色<select id="handoff-target"></select></label>
       <div class="dialog-actions">
         <button type="button" id="handoff-cancel" class="ghost">取消</button>
-        <button type="button" id="handoff-parallel" class="primary">并行打开（保留源窗口）</button>
-        <button type="button" id="handoff-relay">接力打开（关闭源窗口）</button>
+        <button type="button" id="handoff-parallel" class="primary">并行打开（保留源）</button>
+        <button type="button" id="handoff-relay">接力打开（关闭源）</button>
       </div>
     </div>
   </dialog>
 
-  <!-- 预设管理弹层 -->
-  <dialog id="links-dialog" class="dialog">
+  <!-- 预设管理（角色级 + 系统级） -->
+  <dialog id="links-dialog" class="dialog wide">
     <div class="links">
-      <h3>常用 URL 预设 — <span id="links-role"></span></h3>
+      <h3>常用 URL 预设 — <span id="links-owner"></span></h3>
       <div id="links-list" class="list"></div>
       <form id="links-form" class="inline-form">
-        <input id="link-name" type="text" placeholder="预设名称" required />
+        <input id="link-name" type="text" placeholder="名称" required />
         <input id="link-url" type="url" placeholder="https://…" required />
+        <label class="check"><input id="link-auto" type="checkbox" /> 启动时自动打开</label>
         <button type="submit" class="accent">添加</button>
       </form>
       <div class="dialog-actions">
@@ -113,8 +130,24 @@
     </div>
   </dialog>
 
-  <div id="toast" class="toast"></div>
+  <!-- 登录辅助配置 -->
+  <dialog id="login-dialog" class="dialog">
+    <form id="login-form">
+      <h3>登录辅助 — <span id="login-role"></span></h3>
+      <p class="muted small">半自动：打开登录页自动填用户名，密码由你手输。不存储密码。</p>
+      <label>登录页 URL<input id="login-url" type="url" placeholder="https://erp.example.com/login" /></label>
+      <label>用户名<input id="login-username" type="text" placeholder="如：admin" /></label>
+      <label>用户名输入框 CSS 选择器（可选，留空自动找）<input id="login-usel" type="text" placeholder="如：#username" /></label>
+      <label>密码输入框 CSS 选择器（可选，默认 input[type=password]）<input id="login-psel" type="text" placeholder="如：#password" /></label>
+      <div class="dialog-actions">
+        <button type="button" id="login-cancel" class="ghost">取消</button>
+        <button type="button" id="login-clear" class="ghost">清除配置</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
 
+  <div id="toast" class="toast"></div>
   <script src="app.js"></script>
 </body>
 </html>

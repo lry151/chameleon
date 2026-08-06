@@ -23,5 +23,5 @@ pub mod snapshot;
 pub mod window;
 
 pub use error::{ChameleonError, Result};
-pub use model::{GlobalConfig, QuickLink, Role, WindowRect};
+pub use model::{GlobalConfig, LoginConfig, QuickLink, Role, System, WindowRect};
 pub use session::Session;

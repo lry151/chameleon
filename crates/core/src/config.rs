@@ -1,7 +1,7 @@
-//! 配置管理：config.json 读写往返（原子写）、角色增删改、端口分配持久化。
+//! 配置管理：config.json 读写往返（原子写）、角色增删改、系统增删改、端口分配持久化。
 
 use crate::error::{ChameleonError, Result};
-use crate::model::{GlobalConfig, Role};
+use crate::model::{GlobalConfig, Role, System};
 use crate::ports;
 use crate::safety;
 use std::fs;
@@ -91,6 +91,43 @@ impl ConfigStore {
         }
         self.save(cfg)
     }
+
+    /// 创建系统。
+    pub fn create_system(&self, cfg: &mut GlobalConfig, name: String) -> Result<System> {
+        if name.trim().is_empty() {
+            return Err(ChameleonError::ConfigInvalid { detail: "系统名称不能为空".into() });
+        }
+        if cfg.systems.iter().any(|s| s.name == name) {
+            return Err(ChameleonError::DuplicateName { name });
+        }
+        let sys = System::new(name);
+        cfg.systems.push(sys.clone());
+        self.save(cfg)?;
+        Ok(sys)
+    }
+
+    pub fn update_system(&self, cfg: &mut GlobalConfig, system: System) -> Result<()> {
+        match cfg.systems.iter_mut().find(|s| s.id == system.id) {
+            Some(slot) => *slot = system,
+            None => return Err(ChameleonError::ConfigInvalid { detail: "系统不存在".into() }),
+        }
+        self.save(cfg)
+    }
+
+    pub fn delete_system(&self, cfg: &mut GlobalConfig, id: &str) -> Result<()> {
+        let before = cfg.systems.len();
+        cfg.systems.retain(|s| s.id != id);
+        if cfg.systems.len() == before {
+            return Err(ChameleonError::ConfigInvalid { detail: "系统不存在".into() });
+        }
+        // 解除角色的系统归属（角色保留，变为未分组）
+        for r in &mut cfg.roles {
+            if r.system_id.as_deref() == Some(id) {
+                r.system_id = None;
+            }
+        }
+        self.save(cfg)
+    }
 }
 
 /// 目录名清洗：去掉路径分隔符等危险字符，保证 data_root 下安全落子目录。
@@ -145,7 +182,7 @@ mod tests {
         let loaded = store2.load().unwrap();
         assert_eq!(loaded.roles.len(), 1);
         assert_eq!(loaded.roles[0].name, "ERP-管理员");
-        assert_eq!(loaded.roles[0].cdp_port, role.cdp_port); // 端口持久化，重启不变
+        assert_eq!(loaded.roles[0].cdp_port, role.cdp_port);
         assert!(loaded.roles[0].profile_dir.starts_with(&cfg.data_root));
     }
 
@@ -163,19 +200,22 @@ mod tests {
     }
 
     #[test]
-    fn roles_persist_after_reload() {
+    fn system_crud() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("config.json");
-        {
-            let store = ConfigStore::new(&path);
-            let mut cfg = GlobalConfig::default();
-            cfg.data_root = dir.path().join("data");
-            store.create_role(&mut cfg, "审计员".into(), "#3498db".into()).unwrap();
-        }
-        let store = ConfigStore::new(&path);
-        let cfg = store.load().unwrap();
+        let store = ConfigStore::new(dir.path().join("config.json"));
+        let mut cfg = GlobalConfig::default();
+        cfg.data_root = dir.path().join("data");
+        let sys = store.create_system(&mut cfg, "ERP系统".into()).unwrap();
+        assert_eq!(cfg.systems.len(), 1);
+        // 角色挂系统
+        let mut role = store.create_role(&mut cfg, "管理员".into(), "#e74c3c".into()).unwrap();
+        role.system_id = Some(sys.id.clone());
+        store.update_role(&mut cfg, role.clone()).unwrap();
+        // 删除系统 → 角色解绑但保留
+        store.delete_system(&mut cfg, &sys.id).unwrap();
+        assert_eq!(cfg.systems.len(), 0);
         assert_eq!(cfg.roles.len(), 1);
-        assert_eq!(cfg.roles[0].name, "审计员");
+        assert!(cfg.roles[0].system_id.is_none());
     }
 
     #[test]

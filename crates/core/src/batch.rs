@@ -1,6 +1,5 @@
-//! 一键启动 / 一键关闭：批量拉起全部角色窗口；CDP 优雅关闭全部测试窗口。
-//!
-//! 仅作用于测试数据目录中的窗口，绝不触碰日常浏览器配置。
+//! 一键启动 / 一键关闭 / 启动组：批量拉起全部角色 / 启动某系统下全部角色；
+//! CDP 优雅关闭全部测试窗口。仅作用于测试数据目录，绝不触碰日常浏览器配置。
 
 use crate::config::ConfigStore;
 use crate::launcher;
@@ -27,6 +26,24 @@ impl BatchResult {
 pub async fn start_all(session: &mut Session, cfg: &GlobalConfig) -> BatchResult {
     let mut out = BatchResult::default();
     for role in &cfg.roles {
+        if session.is_role_running(&role.id) {
+            continue;
+        }
+        match launcher::launch_role(session, cfg, role).await {
+            Ok(()) => out.ok += 1,
+            Err(e) => out.push_error(e),
+        }
+    }
+    out
+}
+
+/// 启动组：启动某系统下全部角色（已启动的不重复）。
+pub async fn start_system(session: &mut Session, cfg: &GlobalConfig, system_id: &str) -> BatchResult {
+    let mut out = BatchResult::default();
+    for role in &cfg.roles {
+        if role.system_id.as_deref() != Some(system_id) {
+            continue;
+        }
         if session.is_role_running(&role.id) {
             continue;
         }

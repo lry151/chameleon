@@ -119,3 +119,14 @@ dialog.dialog label { display: flex; flex-direction: column; gap: 4px; font-size
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
 .toast.err { border-color: var(--danger); }
 .toast.ok { border-color: var(--accent); }
+
+.toast.ok { border-color: var(--accent); }
+.browser-select { min-width: 320px; max-width: 460px; }
+.system-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.system-card .head { display: flex; align-items: center; justify-content: space-between; }
+.system-card .name { font-weight: 600; }
+.chip.sys { background: #211f29; border-color: var(--border); color: var(--muted); }
+.sys-badge { background: #2a2832; color: var(--muted); margin-left: 6px; }
+dialog.dialog.wide { min-width: 560px; }
+.inline-form .check, .check { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); flex-direction: row; }
+.inline-form .check input { margin: 0; }
