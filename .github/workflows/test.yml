@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-core:
+    name: Test chameleon-core
+    runs-on: ubuntu-latest
+    env:
+      # 集成测试跑真实无头 Chromium
+      CHAMELEON_HEADLESS: "1"
+      CHAMELEON_NO_SANDBOX: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./ -> target"
+
+      # Linux 上 detect_browser 命中 /usr/bin/google-chrome；装 Chrome 供集成测试用
+      - name: Install Chromium
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run chameleon-core tests
+        run: cargo test -p chameleon-core
