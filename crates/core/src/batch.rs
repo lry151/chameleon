@@ -25,6 +25,7 @@ impl BatchResult {
 /// 一键启动所有：按配置拉起全部角色窗口；已启动的角色不重复开窗。
 pub async fn start_all(session: &mut Session, cfg: &GlobalConfig) -> BatchResult {
     let mut out = BatchResult::default();
+    launcher::prune_dead_roles(session).await; // 清掉外部已关的死角色，避免被误判「运行中」而跳过
     for role in &cfg.roles {
         if session.is_role_running(&role.id) {
             continue;
@@ -40,6 +41,7 @@ pub async fn start_all(session: &mut Session, cfg: &GlobalConfig) -> BatchResult
 /// 启动组：启动某系统下全部角色（已启动的不重复）。
 pub async fn start_system(session: &mut Session, cfg: &GlobalConfig, system_id: &str) -> BatchResult {
     let mut out = BatchResult::default();
+    launcher::prune_dead_roles(session).await;
     for role in &cfg.roles {
         if role.system_id.as_deref() != Some(system_id) {
             continue;
@@ -59,6 +61,7 @@ pub async fn start_system(session: &mut Session, cfg: &GlobalConfig, system_id: 
 /// 再逐个关闭沙箱窗口并删除其临时数据目录。单个沙箱已退出/失败不中断整批。
 pub async fn close_all(session: &mut Session, store: &ConfigStore, cfg: &mut GlobalConfig) -> BatchResult {
     let mut out = BatchResult::default();
+    launcher::prune_dead_roles(session).await;
     let ids: Vec<String> = session.roles.keys().cloned().collect();
     for id in ids {
         match launcher::close_role(session, store, cfg, &id).await {

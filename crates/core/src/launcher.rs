@@ -240,20 +240,9 @@ pub fn drop_role(session: &mut Session, role_id: &str) {
     session.roles.remove(role_id);
 }
 
-/// 探测角色浏览器是否可响应（CDP 短超时），防半开连接的操作挂死。
-pub async fn is_role_alive(session: &Session, role_id: &str) -> bool {
-    let Some(run) = session.roles.get(role_id) else {
-        return false;
-    };
-    matches!(
-        tokio::time::timeout(Duration::from_millis(1200), run.browser.version()).await,
-        Ok(Ok(_))
-    )
-}
-
 /// 清理「浏览器已被外部直接关闭」的死角色：对每个运行角色做 CDP 存活探测，
-/// 超时/失败即移除并返回移除数量。UI 刷新与角色命令前调用，避免对死浏览器
-/// 的操作无限挂起（用户直接关 Chrome 后按钮卡死）。
+/// 超时/失败即移除并返回移除数量。命令前调用，避免对死浏览器的操作挂起
+/// （用户直接关 Chrome 后按钮卡死）。
 pub async fn prune_dead_roles(session: &mut Session) -> usize {
     let mut dead = Vec::new();
     for (id, run) in &session.roles {
