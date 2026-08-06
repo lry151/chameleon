@@ -28,6 +28,8 @@ pub enum ChameleonError {
     DefaultDirRefused { dir: PathBuf },
     #[error("端口冲突")]
     PortConflict { port: u16 },
+    #[error("端口被占用且非本角色实例")]
+    PortTakenNotRole { port: u16 },
     #[error("角色不存在")]
     RoleNotFound { id: String },
     #[error("角色窗口未启动")]
@@ -81,6 +83,9 @@ impl ChameleonError {
             ChameleonError::PortConflict { port } => {
                 format!("端口 {port} 已被占用，请为该角色重新分配端口。")
             }
+            ChameleonError::PortTakenNotRole { port } => {
+                format!("端口 {port} 已被占用且非本角色实例，请一键关闭所有后重试。")
+            }
             ChameleonError::RoleNotFound { .. } => "找不到该角色，请刷新后重试。".into(),
             ChameleonError::RoleNotRunning { .. } => "该角色窗口尚未启动，请先启动。".into(),
             ChameleonError::RoleAlreadyRunning { .. } => "该角色窗口已在运行，无需重复启动。".into(),
@@ -121,6 +126,7 @@ mod tests {
             ChameleonError::RoleNotFound { id: "x".into() },
             ChameleonError::DefaultDirRefused { dir: PathBuf::from("C:\\Users\\a\\AppData\\Local\\Google\\Chrome\\User Data") },
             ChameleonError::PortConflict { port: 9222 },
+            ChameleonError::PortTakenNotRole { port: 9222 },
         ];
         for c in cases {
             let m = c.message();

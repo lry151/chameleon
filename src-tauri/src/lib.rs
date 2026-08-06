@@ -152,7 +152,7 @@ async fn launch_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), S
     let cfg = store.load().map_err(msg)?;
     let role = cfg.roles.iter().find(|r| r.id == id).cloned().ok_or_else(|| msg(ChameleonError::RoleNotFound { id: id.clone() }))?;
     let mut session = state.session.lock().await;
-    launcher::launch_role(&mut session, &cfg, &role).await.map_err(msg)
+    launcher::launch_role(&mut session, &cfg, &role, true).await.map_err(msg)
 }
 
 #[tauri::command]
