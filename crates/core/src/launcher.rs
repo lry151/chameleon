@@ -122,8 +122,45 @@ pub async fn launch_role(
     Ok(())
 }
 
+/// 启动角色但不修改 Session（并行启动用）：返回建好的 Browser + handler。
+/// 调用方负责 spawn handler 并将 Browser 插入 Session。
+pub async fn launch_role_no_session(
+    cfg: &GlobalConfig,
+    role: &Role,
+    auto_open: bool,
+) -> Result<Browser> {
+    let browser_path = browser::detect_browser(cfg.browser_path.as_deref())?;
+    let was_running = port_open(role.cdp_port);
+    let browser = if was_running {
+        match Browser::connect(format!("http://127.0.0.1:{}", role.cdp_port)).await {
+            Ok((browser, handler)) => {
+                spawn_handler(handler);
+                browser
+            }
+            Err(_) => {
+                return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
+            }
+        }
+    } else {
+        let config = build_config(role, &browser_path, cfg)?;
+        let (browser, handler) = Browser::launch(config)
+            .await
+            .map_err(|e| ChameleonError::LaunchFailed { detail: e.to_string() })?;
+        spawn_handler(handler);
+        browser
+    };
+
+    // 自动打开预设（调用方已通过 insert 将 browser 放入 session 后才能执行）
+    // 此处只做 URL 收集，页面打开由 batch 层在 insert 后处理。
+    if auto_open {
+        let _urls = collect_auto_open_urls(role, cfg);
+        // auto_open 页面由 batch 层在 insert 后通过 session 操作完成
+    }
+    Ok(browser)
+}
+
 /// 收集角色应自动打开的 URL（角色级 auto_open + 所属系统级 auto_open）。
-fn collect_auto_open_urls(role: &Role, cfg: &GlobalConfig) -> Vec<String> {
+pub fn collect_auto_open_urls(role: &Role, cfg: &GlobalConfig) -> Vec<String> {
     let mut v: Vec<String> = role
         .quick_links
         .iter()

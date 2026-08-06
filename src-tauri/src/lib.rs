@@ -177,32 +177,32 @@ async fn close_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), St
 async fn launch_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
-    let mut session = state.session.lock().await;
-    Ok(chameleon_core::batch::start_all(&mut session, &cfg).await)
+    Ok(chameleon_core::batch::start_all(state.session.clone(), &cfg).await)
 }
 
 #[tauri::command]
 async fn launch_system(state: State<'_, AppState>, system_id: String) -> Result<BatchResult, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
-    let mut session = state.session.lock().await;
-    Ok(chameleon_core::batch::start_system(&mut session, &cfg, &system_id).await)
+    Ok(chameleon_core::batch::start_system(state.session.clone(), &cfg, &system_id).await)
 }
-
 
 #[tauri::command]
 async fn close_system(state: State<'_, AppState>, system_id: String) -> Result<BatchResult, String> {
     let store = state.store();
-    let mut cfg = store.load().map_err(msg)?;
-    let mut session = state.session.lock().await;
-    Ok(chameleon_core::batch::close_system(&mut session, &store, &mut cfg, &system_id).await)
+    let cfg = store.load().map_err(msg)?;
+    Ok(chameleon_core::batch::close_system(
+        state.session.clone(), store, Arc::new(tokio::sync::Mutex::new(cfg)), &system_id,
+    ).await)
 }
+
 #[tauri::command]
 async fn close_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
     let store = state.store();
-    let mut cfg = store.load().map_err(msg)?;
-    let mut session = state.session.lock().await;
-    Ok(chameleon_core::batch::close_all(&mut session, &store, &mut cfg).await)
+    let cfg = store.load().map_err(msg)?;
+    Ok(chameleon_core::batch::close_all(
+        state.session.clone(), store, Arc::new(tokio::sync::Mutex::new(cfg)),
+    ).await)
 }
 
 /// —— 登录辅助 ——

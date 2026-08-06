@@ -19,6 +19,7 @@
   --chip-sys: rgba(33, 31, 41, 0.5);
   --radius: 10px;
   --sys-radius: 16px;
+  color-scheme: dark;
 }
 
 /* 浅色主题 */
@@ -35,7 +36,14 @@
   --chip-bg: rgba(230, 230, 235, 0.6);
   --chip-hover: rgba(220, 220, 230, 0.7);
   --chip-sys: rgba(210, 210, 220, 0.5);
+  color-scheme: light;
 }
+/* 浅色主题 — 组件覆盖 */
+[data-theme="light"] .links-login-fields { background: rgba(230, 230, 235, 0.5); }
+[data-theme="light"] .toast { background: rgba(255, 255, 255, 0.95); border-color: var(--border); }
+[data-theme="light"] dialog.dialog::backdrop { background: rgba(0, 0, 0, 0.25); }
+[data-theme="light"] .role-card .swatch { border-color: rgba(0, 0, 0, 0.12); }
+[data-theme="light"] .accent-dot.active { box-shadow: 0 0 0 2px var(--panel); }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {

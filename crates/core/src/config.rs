@@ -9,6 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// 配置仓库：config.json 为唯一配置源（明文 JSON，人工可改）。
+#[derive(Clone, Debug)]
 pub struct ConfigStore {
     path: PathBuf,
 }
