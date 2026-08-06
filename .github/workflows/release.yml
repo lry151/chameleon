@@ -53,9 +53,9 @@ jobs:
             exit 1
           }
           New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
-          Copy-Item $exePath (Join-Path $portableDir "变色龙.exe") -Force
+          Copy-Item $exePath (Join-Path $portableDir "chameleon.exe") -Force
           if (Test-Path "LICENSE") { Copy-Item "LICENSE" (Join-Path $portableDir "LICENSE") -Force }
-          Set-Content -Path (Join-Path $portableDir "portable.txt") -Value "变色龙便携版 $version — 双击 变色龙.exe 即可运行。" -NoNewline
+          Set-Content -Path (Join-Path $portableDir "portable.txt") -Value "chameleon portable $version — double-click chameleon.exe to run." -NoNewline
           $zip = "chameleon_${version}_x64-portable.zip"
           Compress-Archive -Path "$portableDir\*" -DestinationPath $zip -Force
           gh release upload "${env:GITHUB_REF_NAME}" $zip --clobber
