@@ -89,16 +89,20 @@ button {
   font-family: inherit; font-size: 13px; color: var(--text);
   background: var(--panel-2); border: 1px solid var(--border);
   padding: 6px 12px; border-radius: 8px; cursor: pointer;
-  transition: transform 100ms ease-out, background .15s, border-color .15s;
+  transition: transform 100ms ease-out, background .15s, border-color .15s, color .15s;
 }
 button:hover { background: var(--hover-bg); }
 button:active { transform: scale(0.97); }
-button.primary { background: var(--accent); border-color: var(--accent-2); color: #06231d; font-weight: 600; }
-button.primary:hover { background: var(--accent-2); }
-button.accent { background: var(--warn); border-color: #d18800; color: #2a1a00; font-weight: 600; }
-button.ghost { background: transparent; }
-button.danger { background: var(--danger); border-color: #c0392b; color: #fff; }
-button.small { padding: 4px 8px; font-size: 12px; }
+button.primary {
+  background: var(--accent); border-color: var(--accent);
+  color: #fff; font-weight: 600; box-shadow: 0 2px 8px rgba(26, 188, 156, 0.3);
+}
+button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+button.accent { background: var(--warn); border-color: var(--warn); color: #fff; font-weight: 600; }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+button.ghost:hover { background: var(--hover-bg); color: var(--text); border-color: var(--border); }
+button.danger { background: transparent; border-color: transparent; color: var(--danger); }
+button.danger:hover { background: rgba(231, 76, 60, 0.1); border-color: var(--danger); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 
 .browser-bar {

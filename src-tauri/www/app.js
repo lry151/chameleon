@@ -187,12 +187,12 @@ function roleCard(r, state) {
     card.appendChild(chips);
   }
   const actions = el("div", "actions");
-  if (r.running) actions.appendChild(btn("关闭", "small", () => run(invoke("close_role_cmd", { id: r.id }), `已关闭「${r.name}」`)));
-  else actions.appendChild(btn("启动", "primary small", () => run(invoke("launch_role_cmd", { id: r.id }), `已启动「${r.name}」`)));
-  actions.appendChild(btn("接力", "small", () => openHandoff(r)));
+  if (r.running) actions.appendChild(btn("■ 关闭", "danger small", () => run(invoke("close_role_cmd", { id: r.id }), `已关闭「${r.name}」`)));
+  else actions.appendChild(btn("▶ 启动", "primary small", () => run(invoke("launch_role_cmd", { id: r.id }), `已启动「${r.name}」`)));
   actions.appendChild(btn("预设", "small", () => openLinks({ kind: "role", id: r.id, name: r.name })));
-  actions.appendChild(btn("克隆", "ghost small", () => { const { id, ...rest } = r; openRoleDialog({ ...rest, name: r.name + " (副本)", id: undefined }, r.id); }));
+  actions.appendChild(btn("接力", "ghost small", () => openHandoff(r)));
   actions.appendChild(btn("编辑", "ghost small", () => openRoleDialog(r)));
+  actions.appendChild(btn("克隆", "ghost small", () => { const { id, ...rest } = r; openRoleDialog({ ...rest, name: r.name + " (副本)", id: undefined }, r.id); }));
   actions.appendChild(btn("删除", "danger small", () => deleteRole(r)));
   card.appendChild(actions);
   return card;
