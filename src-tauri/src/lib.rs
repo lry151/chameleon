@@ -9,7 +9,7 @@ use chameleon_core::{
     export,
     handoff::HandoffMode,
     launcher,
-    model::{LoginConfig, QuickLinkLogin, Role, System},
+    model::{LoginConfig, QuickLinkLogin, Role, System, UiPreferences},
     quicklinks, sandbox,
     snapshot::SnapshotStore,
     ChameleonError, Session,
@@ -321,6 +321,22 @@ async fn set_browser_path(state: State<'_, AppState>, path: String) -> Result<()
     store.save(&cfg).map_err(msg)
 }
 
+/// —— UI 偏好 ——
+
+#[tauri::command]
+async fn get_ui_preferences(state: State<'_, AppState>) -> Result<UiPreferences, String> {
+    let cfg = state.store().load().map_err(msg)?;
+    Ok(cfg.ui_preferences)
+}
+
+#[tauri::command]
+async fn set_ui_preferences(state: State<'_, AppState>, prefs: UiPreferences) -> Result<(), String> {
+    let store = state.store();
+    let mut cfg = store.load().map_err(msg)?;
+    cfg.ui_preferences = prefs;
+    store.save(&cfg).map_err(msg)
+}
+
 /// —— 配置导出 / 导入 ——
 
 #[tauri::command]
@@ -522,6 +538,25 @@ pub fn run() {
             .transparent(true)
             .build()?;
 
+            // Windows 原生 Mica/Acrylic 背景效果
+            #[cfg(target_os = "windows")]
+            {
+                use window_vibrancy::{apply_mica, apply_acrylic};
+                use windows_version::OsVersion;
+                if let Some(window) = app.get_webview_window("main") {
+                    let ver = OsVersion::current();
+                    // Windows 11 (build 22000+) → Mica；Windows 10 → Acrylic
+                    let result = if ver.major >= 10 && ver.build >= 22000 {
+                        apply_mica(&window, None)
+                    } else {
+                        apply_acrylic(&window, Some((33, 31, 41, 180)))
+                    };
+                    if let Err(e) = result {
+                        eprintln!("window-vibrancy 失败: {e}");
+                    }
+                }
+            }
+
             // 系统托盘：常驻图标，关窗最小化到托盘，左键/菜单恢复
             let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -577,6 +612,7 @@ pub fn run() {
             add_quick_link, edit_quick_link, remove_quick_link, open_quick_link,
             add_system_quick_link, edit_system_quick_link, remove_system_quick_link,
             pick_browser_path, set_browser_path,
+            get_ui_preferences, set_ui_preferences,
             export_config_cmd, import_config_cmd,
             save_snapshot, list_snapshots, restore_snapshot, delete_snapshot,
             launch_sandbox, close_sandbox, cleanup_temp,

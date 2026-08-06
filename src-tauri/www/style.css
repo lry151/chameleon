@@ -1,8 +1,10 @@
 :root {
   --bg: transparent;
-  --panel: rgba(39, 38, 46, 0.72);
-  --panel-2: rgba(50, 47, 58, 0.62);
-  --sys: rgba(33, 31, 41, 0.78);
+  --panel-opacity: 0.72;
+  --panel: rgba(39, 38, 46, var(--panel-opacity));
+  --panel-2: rgba(50, 47, 58, calc(var(--panel-opacity) * 0.86));
+  --sys: rgba(33, 31, 41, calc(var(--panel-opacity) * 1.08));
+  --topbar-bg: rgba(33, 31, 41, var(--panel-opacity));
   --text: #ecebf1;
   --muted: #9a98a8;
   --accent: #1abc9c;
@@ -10,8 +12,29 @@
   --danger: #e74c3c;
   --warn: #f39c12;
   --border: rgba(59, 57, 70, 0.7);
+  --hover-bg: rgba(58, 55, 68, 0.7);
+  --win-hover: rgba(255, 255, 255, 0.08);
+  --chip-bg: rgba(42, 40, 50, 0.6);
+  --chip-hover: rgba(44, 40, 56, 0.6);
+  --chip-sys: rgba(33, 31, 41, 0.5);
   --radius: 10px;
   --sys-radius: 16px;
+}
+
+/* 浅色主题 */
+[data-theme="light"] {
+  --panel: rgba(255, 255, 255, var(--panel-opacity));
+  --panel-2: rgba(240, 240, 245, calc(var(--panel-opacity) * 0.86));
+  --sys: rgba(230, 230, 235, calc(var(--panel-opacity) * 1.08));
+  --topbar-bg: rgba(245, 245, 248, var(--panel-opacity));
+  --text: #1a1a1a;
+  --muted: #666666;
+  --border: rgba(200, 200, 210, 0.7);
+  --hover-bg: rgba(220, 220, 230, 0.7);
+  --win-hover: rgba(0, 0, 0, 0.06);
+  --chip-bg: rgba(230, 230, 235, 0.6);
+  --chip-hover: rgba(220, 220, 230, 0.7);
+  --chip-sys: rgba(210, 210, 220, 0.5);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
@@ -23,15 +46,14 @@ body {
   display: flex; flex-direction: column;
 }
 
-/* 顶部工具栏：浮动材质（backdrop-filter），不抢焦点 */
+/* 顶部工具栏：由原生 Mica/Acrylic 提供背景，不抢焦点 */
 .topbar {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 18px;
-  background: rgba(33, 31, 41, 0.72);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--border);
+  -webkit-app-region: no-drag;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand .logo {
@@ -52,7 +74,7 @@ body {
   color: var(--muted); transition: background .12s, color .12s;
 }
 .win-btn svg { width: 12px; height: 12px; }
-.win-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.win-btn:hover { background: var(--win-hover); color: var(--text); }
 .win-close:hover { background: #c0392b; color: #fff; }
 
 button {
@@ -61,7 +83,7 @@ button {
   padding: 6px 12px; border-radius: 8px; cursor: pointer;
   transition: transform 100ms ease-out, background .15s, border-color .15s;
 }
-button:hover { background: rgba(58, 55, 68, 0.7); }
+button:hover { background: var(--hover-bg); }
 button:active { transform: scale(0.97); }
 button.primary { background: var(--accent); border-color: var(--accent-2); color: #06231d; font-weight: 600; }
 button.primary:hover { background: var(--accent-2); }
@@ -98,10 +120,10 @@ main { padding: 14px 18px; overflow-y: auto; flex: 1; }
 .sys-head .meta { color: var(--muted); font-size: 12px; margin-left: 8px; }
 .sys-links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .sys-links .chip {
- background: rgba(28, 27, 34, 0.6); border: 1px dashed var(--border); color: var(--muted);
+ background: var(--chip-bg); border: 1px dashed var(--border); color: var(--muted);
   border-radius: 999px; padding: 2px 10px; font-size: 12px; cursor: pointer;
 }
-.sys-links .chip:hover { background: rgba(42, 40, 50, 0.6); }
+.sys-links .chip:hover { background: var(--chip-hover); }
 
 .role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
 
@@ -114,21 +136,21 @@ main { padding: 14px 18px; overflow-y: auto; flex: 1; }
   display: flex; flex-direction: column; gap: 8px;
   transition: background .15s;
 }
-.role-card:hover { background: rgba(58, 55, 68, 0.6); }
+.role-card:hover { background: var(--hover-bg); }
 .role-card .head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .role-card .name { font-weight: 600; font-size: 14px; }
 .role-card .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 5px; border: 1px solid #00000033; }
-.role-card .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(42, 40, 50, 0.6); color: var(--muted); }
+.role-card .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--chip-bg); color: var(--muted); }
 .role-card .badge.running { background: var(--accent); color: #06231d; }
 .role-card .sys-tag { font-size: 11px; color: var(--muted); margin-left: 4px; }
 .role-card .port { color: var(--muted); font-size: 11px; }
 .role-card .preset-chips { display: flex; gap: 5px; flex-wrap: wrap; }
 .role-card .preset-chips .chip {
- background: rgba(42, 40, 50, 0.6); border: 1px solid var(--border); color: var(--text);
+ background: var(--chip-bg); border: 1px solid var(--border); color: var(--text);
   border-radius: 999px; padding: 2px 9px; font-size: 11px; cursor: pointer;
 }
-.role-card .preset-chips .chip.sys { background: rgba(33, 31, 41, 0.5); border-style: dashed; color: var(--muted); }
-.role-card .preset-chips .chip:hover { background: rgba(44, 40, 56, 0.6); }
+.role-card .preset-chips .chip.sys { background: var(--chip-sys); border-style: dashed; color: var(--muted); }
+.role-card .preset-chips .chip:hover { background: var(--chip-hover); }
 .role-card .actions { display: flex; gap: 5px; flex-wrap: wrap; }
 
 .list { display: flex; flex-direction: column; gap: 6px; }
@@ -182,6 +204,23 @@ dialog.dialog.wide { min-width: 560px; }
 .handoff-row { display: flex; flex-direction: column; gap: 4px; background: var(--panel-2); padding: 8px; border-radius: 8px; }
 .links-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
 
+/* 设置面板 */
+.settings { display: flex; flex-direction: column; gap: 14px; min-width: 320px; }
+.settings h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.settings-group { display: flex; flex-direction: column; gap: 6px; }
+.settings-label { font-size: 13px; color: var(--muted); }
+.settings-radio-group { display: flex; gap: 12px; }
+.settings-radio-group label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text); cursor: pointer; }
+#opacity-slider { width: 100%; accent-color: var(--accent); }
+.accent-picker { display: flex; gap: 8px; }
+.accent-dot {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; padding: 0; transition: border-color .12s, transform .1s;
+}
+.accent-dot:hover { transform: scale(1.15); }
+.accent-dot.active { border-color: var(--text); box-shadow: 0 0 0 2px var(--panel); }
+.settings-btn { margin-left: auto; }
+
 /* toast：浮层反馈 */
 .toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(8px);
@@ -200,7 +239,6 @@ dialog.dialog.wide { min-width: 560px; }
     --sys: #211f29;
     --border: #3b3946;
   }
-  .topbar { backdrop-filter: none; }
   dialog.dialog::backdrop { backdrop-filter: none; background: rgba(0,0,0,0.7); }
 }
 /* reduced-motion：弹窗 cross-fade，无 scale/弹簧 */

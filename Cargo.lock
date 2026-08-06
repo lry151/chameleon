@@ -482,7 +482,9 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
  "tokio",
+ "window-vibrancy",
  "windows",
+ "windows-version",
 ]
 
 [[package]]

@@ -104,6 +104,40 @@ impl System {
     }
 }
 
+/// 主题模式：深色 / 浅色 / 跟随系统。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ThemeMode {
+    Dark,
+    Light,
+    System,
+}
+
+impl Default for ThemeMode {
+    fn default() -> Self {
+        Self::Dark
+    }
+}
+
+/// UI 偏好：主题 + 面板透明度 + Accent 颜色。持久化到 config.json。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UiPreferences {
+    pub theme: ThemeMode,
+    /// 面板透明度 0.5–1.0。
+    pub panel_opacity: f32,
+    /// Accent 颜色，十六进制如 "#1abc9c"。
+    pub accent_color: String,
+}
+
+impl Default for UiPreferences {
+    fn default() -> Self {
+        Self {
+            theme: ThemeMode::Dark,
+            panel_opacity: 0.72,
+            accent_color: "#1abc9c".into(),
+        }
+    }
+}
+
 /// 全局配置：角色列表 + 系统列表 + 浏览器路径 / 数据根目录等全局设置。
 /// config.json 为唯一配置源，明文 JSON，人工可改。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +149,9 @@ pub struct GlobalConfig {
     pub roles: Vec<Role>,
     #[serde(default)]
     pub systems: Vec<System>,
+    /// UI 偏好（主题/透明度/Accent）；旧配置自动填充默认值。
+    #[serde(default)]
+    pub ui_preferences: UiPreferences,
 }
 
 impl Default for GlobalConfig {
@@ -124,6 +161,7 @@ impl Default for GlobalConfig {
             data_root: PathBuf::from("data"),
             roles: Vec::new(),
             systems: Vec::new(),
+            ui_preferences: UiPreferences::default(),
         }
     }
 }

@@ -476,4 +476,94 @@ $("btn-import").onclick = async () => {
   }
 };
 
+// —— 窗口拖动（topbar 空白区域） ——
+const { getCurrentWindow } = window.__TAURI__.window;
+document.querySelector(".topbar").addEventListener("mousedown", (e) => {
+    if (e.target.closest("button, input, select, .win-controls")) return;
+    getCurrentWindow().startDragging();
+});
+// —— UI 偏好设置 ——
+let uiPrefs = { theme: "Dark", panel_opacity: 0.72, accent_color: "#1abc9c" };
+let systemThemeMq = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(theme) {
+    let resolved = theme;
+    if (theme === "System") resolved = systemThemeMq.matches ? "Dark" : "Light";
+    document.documentElement.dataset.theme = resolved.toLowerCase();
+}
+
+function applyOpacity(v) {
+    document.documentElement.style.setProperty("--panel-opacity", String(v));
+    const label = $("opacity-value");
+    if (label) label.textContent = Math.round(v * 100) + "%";
+}
+
+/// 将十六进制颜色按 factor 变暗（factor 0–1，越小越暗）。
+function darkenColor(hex, factor) {
+    const r = Math.round(parseInt(hex.slice(1, 3), 16) * factor);
+    const g = Math.round(parseInt(hex.slice(3, 5), 16) * factor);
+    const b = Math.round(parseInt(hex.slice(5, 7), 16) * factor);
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+function applyAccent(color) {
+    document.documentElement.style.setProperty("--accent", color);
+    document.documentElement.style.setProperty("--accent-2", darkenColor(color, 0.85));
+    document.querySelectorAll(".accent-dot").forEach((d) => {
+        d.classList.toggle("active", d.dataset.color === color);
+    });
+}
+
+function applyPrefs(prefs) {
+    uiPrefs = prefs;
+    applyTheme(prefs.theme);
+    applyOpacity(prefs.panel_opacity);
+    applyAccent(prefs.accent_color);
+    // 同步 dialog 控件
+    const radio = document.querySelector(`input[name="theme"][value="${prefs.theme}"]`);
+    if (radio) radio.checked = true;
+    const slider = $("opacity-slider");
+    if (slider) slider.value = String(prefs.panel_opacity);
+}
+
+async function savePrefs() {
+    try { await invoke("set_ui_preferences", { prefs: uiPrefs }); } catch (e) { toast(String(e), "err"); }
+}
+
+async function loadPrefs() {
+    try {
+        const prefs = await invoke("get_ui_preferences");
+        applyPrefs(prefs);
+    } catch (e) { /* 旧版本或错误 → 保持默认 */ }
+}
+
+// 设置 dialog 交互
+$("btn-settings").onclick = () => $("settings-dialog").showModal();
+$("settings-close").onclick = () => $("settings-dialog").close();
+
+document.querySelectorAll('input[name="theme"]').forEach((r) => {
+    r.onchange = () => { uiPrefs.theme = r.value; applyTheme(r.value); savePrefs(); };
+});
+
+$("opacity-slider").oninput = (e) => {
+    const v = parseFloat(e.target.value);
+    uiPrefs.panel_opacity = v;
+    applyOpacity(v);
+};
+$("opacity-slider").onchange = () => savePrefs();
+
+$("accent-picker").addEventListener("click", (e) => {
+    const dot = e.target.closest(".accent-dot");
+    if (!dot) return;
+    uiPrefs.accent_color = dot.dataset.color;
+    applyAccent(dot.dataset.color);
+    savePrefs();
+});
+
+systemThemeMq.addEventListener("change", () => {
+    if (uiPrefs.theme === "System") applyTheme("System");
+});
+
+loadPrefs();
+
 refresh();
