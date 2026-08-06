@@ -164,16 +164,18 @@ main { padding: 14px 18px; overflow-y: auto; flex: 1; }
 .panel-head h2 { margin: 0; font-size: 14px; }
 
 /* 预设表单：两行布局（主行 + 登录字段行） */
-.links-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.links-form-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.links-form-row input:not([type="checkbox"]) { flex: 1; min-width: 100px; }
-.links-form-row .check { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.links-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.links-form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.links-form-row input[type="text"],
+.links-form-row input[type="url"] { flex: 1; min-width: 140px; }
+.links-form-row .check { font-size: 12px; color: var(--muted); white-space: nowrap; flex: 0 0 auto; }
+.links-form-row button { flex: 0 0 auto; }
 .links-login-fields {
-  display: none; gap: 6px; flex-wrap: wrap; padding: 6px 8px;
+  display: none; gap: 8px; flex-wrap: wrap; padding: 8px 10px;
   background: rgba(33, 31, 41, 0.4); border-radius: 8px;
 }
 .links-login-fields.visible { display: flex; }
-.links-login-fields input { flex: 1; min-width: 120px; }
+.links-login-fields input { flex: 1; min-width: 140px; }
 
 .inline-form input:not([type="checkbox"]) { flex: 1; min-width: 120px; }
 .inline-form .check, .check { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); flex-direction: row; }
