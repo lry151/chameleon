@@ -1,4 +1,7 @@
-// chameleon 前端：纯 vanilla JS，调用 Tauri 命令薄壳。术语见 CONTEXT.md。
+// chameleon 前端：纯 vanilla JS。
+// 注意：Tauri 只转顶层命令参数(camelCase→snake_case)，不转嵌套返回值字段。
+// 所以【读取返回值】用 snake_case，【发送嵌套对象 role/login】字段也 snake_case，
+// 仅【顶层命令参数】用 camelCase（roleId/autoOpen 等由 Tauri 转换）。
 const { invoke } = window.__TAURI__.core;
 const HandoffMode = { PARALLEL: "parallel", RELAY: "relay" };
 
@@ -9,7 +12,6 @@ const el = (tag, cls, text) => {
   if (text != null) e.textContent = text;
   return e;
 };
-
 let toastTimer;
 function toast(msg, kind = "") {
   const t = $("toast");
@@ -38,7 +40,7 @@ function shortDir(p) {
   if (!p) return "";
   return String(p).replace(/\\/g, "/").split("/").slice(-2).join("/");
 }
-let LAST = null; // 上次 get_state 结果，供 dialog 复用
+let LAST = null;
 
 async function refresh() {
   const state = await invoke("get_state");
@@ -50,7 +52,6 @@ async function refresh() {
   renderSnapshots(state);
 }
 
-// —— 浏览器 ——
 function renderBrowser(state) {
   const sel = $("browser-select");
   const cur = state.browser_path;
@@ -81,7 +82,6 @@ $("btn-pick-browser").onclick = async () => {
   if (p) await run(invoke("set_browser_path", { path: p }), "已保存浏览器路径");
 };
 
-// —— 系统 ——
 function renderSystems(state) {
   const box = $("systems");
   box.innerHTML = "";
@@ -98,7 +98,7 @@ function renderSystems(state) {
       invoke("launch_system", { systemId: s.id }).then((r) => {
         toast(`已启动 ${r.ok} 个角色${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok");
         refresh();
-      })
+      }).catch((e) => toast(String(e), "err"))
     ));
     acts.appendChild(btn("预设", "small", () => openLinks({ kind: "system", id: s.id, name: s.name })));
     acts.appendChild(btn("编辑", "ghost small", () => openSystemDialog(s)));
@@ -108,12 +108,14 @@ function renderSystems(state) {
     }));
     head.appendChild(acts);
     card.appendChild(head);
-    if (s.quickLinks.length) {
+    const sysLinks = s.quick_links || [];
+    if (sysLinks.length) {
       const chips = el("div", "preset-chips");
-      for (const q of s.quickLinks) {
-        const chip = el("span", "chip sys", q.name + (q.autoOpen ? " ⚡" : ""));
+      for (const q of sysLinks) {
+        const chip = el("span", "chip sys", q.name + (q.auto_open ? " ⚡" : ""));
         chip.title = q.url;
-        chip.onclick = () => run(invoke("open_quick_link", { roleId: roleInSystem(s.id), name: q.name }), `已打开「${q.name}」`);
+        const rid = roleInSystem(s.id);
+        chip.onclick = () => rid && run(invoke("open_quick_link", { roleId: rid, name: q.name }), `已打开「${q.name}」`);
         chips.appendChild(chip);
       }
       card.appendChild(chips);
@@ -122,8 +124,7 @@ function renderSystems(state) {
   }
 }
 function roleInSystem(sid) {
-  // 系统级预设点击：取该系统第一个运行中或任意角色打开
-  const r = LAST.roles.find((x) => x.systemId === sid) || LAST.roles.find((x) => x.systemId === sid && x.running);
+  const r = LAST.roles.find((x) => x.system_id === sid && x.running) || LAST.roles.find((x) => x.system_id === sid);
   return r ? r.id : null;
 }
 
@@ -144,7 +145,6 @@ function openSystemDialog(sys) {
   $("system-dialog").showModal();
 }
 
-// —— 角色 ——
 function renderRoles(state) {
   const grid = $("roles");
   grid.innerHTML = "";
@@ -160,31 +160,28 @@ function renderRoles(state) {
     left.appendChild(el("span", "swatch"));
     left.querySelector(".swatch").style.background = r.color;
     left.appendChild(el("span", "name", r.name));
-    const sysName = state.systems.find((s) => s.id === r.systemId)?.name;
+    const sysName = state.systems.find((s) => s.id === r.system_id)?.name;
     if (sysName) left.appendChild(el("span", "badge sys-badge", sysName));
     head.appendChild(left);
     head.appendChild(el("span", "badge " + (r.running ? "running" : ""), r.running ? "运行中" : "未启动"));
     card.appendChild(head);
-
-    card.appendChild(el("div", "port", `端口 ${r.cdpPort} · ${shortDir(r.profileDir)}`));
-
-    // 系统级预设 chip（灰底）
-    const sysLinks = state.systems.find((s) => s.id === r.systemId)?.quickLinks || [];
+    card.appendChild(el("div", "port", `端口 ${r.cdp_port} · ${shortDir(r.profile_dir)}`));
+    const sysLinks = state.systems.find((s) => s.id === r.system_id)?.quick_links || [];
     if (sysLinks.length) {
       const chips = el("div", "preset-chips");
       for (const q of sysLinks) {
-        const chip = el("span", "chip sys", q.name + (q.autoOpen ? " ⚡" : ""));
+        const chip = el("span", "chip sys", q.name + (q.auto_open ? " ⚡" : ""));
         chip.title = q.url;
         chip.onclick = () => run(invoke("open_quick_link", { roleId: r.id, name: q.name }), `已打开「${q.name}」`);
         chips.appendChild(chip);
       }
       card.appendChild(chips);
     }
-    // 角色级预设 chip（角色色底）
-    if (r.quickLinks.length) {
+    const roleLinks = r.quick_links || [];
+    if (roleLinks.length) {
       const chips = el("div", "preset-chips");
-      for (const q of r.quickLinks) {
-        const chip = el("span", "chip", q.name + (q.autoOpen ? " ⚡" : ""));
+      for (const q of roleLinks) {
+        const chip = el("span", "chip", q.name + (q.auto_open ? " ⚡" : ""));
         chip.style.borderColor = r.color;
         chip.title = q.url;
         chip.onclick = () => run(invoke("open_quick_link", { roleId: r.id, name: q.name }), `已打开「${q.name}」`);
@@ -192,7 +189,6 @@ function renderRoles(state) {
       }
       card.appendChild(chips);
     }
-
     const actions = el("div", "actions");
     if (r.running) actions.appendChild(btn("关闭", "small", () => run(invoke("close_role_cmd", { id: r.id }), `已关闭「${r.name}」`)));
     else actions.appendChild(btn("启动", "primary small", () => run(invoke("launch_role_cmd", { id: r.id }), `已启动「${r.name}」`)));
@@ -207,7 +203,6 @@ function renderRoles(state) {
   }
 }
 
-// —— 角色 dialog ——
 function openRoleDialog(role) {
   const d = $("role-dialog");
   $("role-dialog-title").textContent = role ? "编辑角色" : "新建角色";
@@ -216,7 +211,7 @@ function openRoleDialog(role) {
   const sel = $("role-system");
   sel.innerHTML = '<option value="">未分组</option>';
   for (const s of LAST.systems) sel.add(new Option(s.name, s.id));
-  sel.value = role?.systemId || "";
+  sel.value = role?.system_id || "";
   d.dataset.id = role ? role.id : "";
   d.showModal();
 }
@@ -231,18 +226,17 @@ $("role-form").onsubmit = async (e) => {
   $("role-dialog").close();
   if (id) {
     const existing = LAST.roles.find((r) => r.id === id);
-    await run(invoke("update_role", { role: { ...existing, name, color, systemId } }), `已更新「${name}」`);
+    await run(invoke("update_role", { role: { ...existing, name, color, system_id: systemId } }), `已更新「${name}」`);
   } else {
     const created = await run(invoke("create_role", { name, color }), `已创建「${name}」`);
-    if (created && systemId) await run(invoke("update_role", { role: { ...created, systemId } }));
+    if (created && systemId) await run(invoke("update_role", { role: { ...created, system_id: systemId } }));
   }
 };
 async function deleteRole(r) {
-  if (!confirm(`确定删除角色「${r.name}」？该角色的数据目录不会被删除，仅移除配置。`)) return;
+  if (!confirm(`确定删除角色「${r.name}」？数据目录不删，仅移除配置。`)) return;
   await run(invoke("delete_role", { id: r.id }), `已删除角色「${r.name}」`);
 }
 
-// —— 接力 ——
 let handoffSource = null;
 async function openHandoff(source) {
   handoffSource = source;
@@ -268,8 +262,7 @@ async function doHandoff(mode) {
   if (url) toast(`已传递：${url}`, "ok");
 }
 
-// —— 预设管理（角色级 + 系统级，含编辑） ——
-let linksOwner = null; // {kind, id, name}
+let linksOwner = null;
 function openLinks(owner) {
   linksOwner = owner;
   $("links-owner").textContent = owner.name;
@@ -279,8 +272,8 @@ function openLinks(owner) {
   $("links-dialog").showModal();
 }
 function ownerLinks() {
-  if (linksOwner.kind === "system") return LAST.systems.find((s) => s.id === linksOwner.id)?.quickLinks || [];
-  return LAST.roles.find((r) => r.id === linksOwner.id)?.quickLinks || [];
+  if (linksOwner.kind === "system") return LAST.systems.find((s) => s.id === linksOwner.id)?.quick_links || [];
+  return LAST.roles.find((r) => r.id === linksOwner.id)?.quick_links || [];
 }
 function renderLinksList() {
   const box = $("links-list");
@@ -290,12 +283,12 @@ function renderLinksList() {
   for (const q of links) {
     const row = el("div", "list-item");
     const meta = el("div", "meta");
-    meta.appendChild(el("span", null, q.name + (q.autoOpen ? " ⚡" : "")));
+    meta.appendChild(el("span", null, q.name + (q.auto_open ? " ⚡" : "")));
     meta.appendChild(el("small", null, q.url));
     row.appendChild(meta);
     const acts = el("div");
     acts.appendChild(btn("编辑", "small", () => {
-      $("link-name").value = q.name; $("link-url").value = q.url; $("link-auto").checked = q.autoOpen;
+      $("link-name").value = q.name; $("link-url").value = q.url; $("link-auto").checked = q.auto_open;
       $("links-dialog").dataset.editing = q.name;
     }));
     acts.appendChild(btn("删除", "danger small", () => removeLink(q.name)));
@@ -336,16 +329,15 @@ $("links-form").onsubmit = async (e) => {
   $("links-dialog").dataset.editing = "";
 };
 
-// —— 登录辅助配置 ——
 let loginRole = null;
 function openLoginDialog(role) {
   loginRole = role;
   $("login-role").textContent = role.name;
   const lg = role.login || {};
-  $("login-url").value = lg.loginUrl || "";
+  $("login-url").value = lg.login_url || "";
   $("login-username").value = lg.username || "";
-  $("login-usel").value = lg.usernameSelector || "";
-  $("login-psel").value = lg.passwordSelector || "";
+  $("login-usel").value = lg.username_selector || "";
+  $("login-psel").value = lg.password_selector || "";
   $("login-dialog").showModal();
 }
 $("login-cancel").onclick = () => $("login-dialog").close();
@@ -356,16 +348,15 @@ $("login-clear").onclick = async () => {
 $("login-form").onsubmit = async (e) => {
   e.preventDefault();
   const login = {
-    loginUrl: $("login-url").value.trim(),
+    login_url: $("login-url").value.trim(),
     username: $("login-username").value.trim(),
-    usernameSelector: $("login-usel").value.trim() || null,
-    passwordSelector: $("login-psel").value.trim() || null,
+    username_selector: $("login-usel").value.trim() || null,
+    password_selector: $("login-psel").value.trim() || null,
   };
   $("login-dialog").close();
   await run(invoke("set_role_login", { roleId: loginRole.id, login }), `已保存「${loginRole.name}」的登录配置`);
 };
 
-// —— 沙箱 / 快照 / 工具栏 ——
 function renderSandboxes(state) {
   const box = $("sandboxes");
   box.innerHTML = "";
@@ -396,8 +387,8 @@ function renderSnapshots(state) {
     box.appendChild(row);
   }
 }
-$("btn-launch-all").onclick = () => invoke("launch_all").then((r) => { toast(`已启动 ${r.ok} 个角色${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh(); });
-$("btn-close-all").onclick = () => invoke("close_all").then((r) => { toast(`已关闭 ${r.ok} 个窗口${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh(); });
+$("btn-launch-all").onclick = () => invoke("launch_all").then((r) => { toast(`已启动 ${r.ok} 个角色${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
+$("btn-close-all").onclick = () => invoke("close_all").then((r) => { toast(`已关闭 ${r.ok} 个窗口${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
 $("btn-sandbox").onclick = () => invoke("launch_sandbox").then(() => { toast("已启动临时沙箱", "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
 $("btn-cleanup").onclick = () => invoke("cleanup_temp").then((n) => { toast(`已清理 ${n} 个临时目录`, "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
 $("btn-export").onclick = async () => { const p = await invoke("export_config_cmd"); if (p) toast(`配置已导出至：${p}`, "ok"); };
