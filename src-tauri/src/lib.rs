@@ -437,8 +437,11 @@ pub fn webview2_installed() -> bool {
 
 #[cfg(windows)]
 fn reg_key_present(key: &str) -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     std::process::Command::new("reg")
         .args(["query", key])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)

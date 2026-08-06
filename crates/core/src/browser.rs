@@ -109,8 +109,13 @@ fn registry_app_paths() -> Vec<(String, PathBuf)> {
 fn query_registry_default(key: &str) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW：reg 是控制台子系统程序，GUI 应用（无父控制台，
+        // 如安装版）spawn 它会分配新控制台 → 终端框闪现。必须显式抑制。
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let out = std::process::Command::new("reg")
             .args(["query", key, "//ve"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok()?;
         if !out.status.success() {
