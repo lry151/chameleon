@@ -9,16 +9,19 @@ use chameleon_core::{
     export,
     handoff::HandoffMode,
     launcher,
-    model::{LoginConfig, QuickLink, Role, System},
+    model::{LoginConfig, Role, System},
     quicklinks, sandbox,
-    single_instance::InstanceLock,
     snapshot::SnapshotStore,
     ChameleonError, Session,
 };
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::{
+    menu::{MenuBuilder, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, State, WindowEvent,
+};
 use tauri_plugin_dialog::DialogExt;
 
 fn msg(e: ChameleonError) -> String {
@@ -443,13 +446,6 @@ pub fn show_error_box(title: &str, msg: &str) {
 
 pub fn run() {
     let app_dir = app_dir();
-    let _lock = match InstanceLock::acquire(&app_dir) {
-        Ok(l) => l,
-        Err(e) => {
-            show_error_box("chameleon", &e.message());
-            std::process::exit(1);
-        }
-    };
     {
         let cfg = ConfigStore::new(app_dir.join("config.json"))
             .load()
@@ -459,6 +455,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // 二次启动 → 激活已有实例主窗口（替换单实例文件锁）
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .manage(AppState {
             session: Arc::new(tokio::sync::Mutex::new(Session::default())),
             app_dir: app_dir.clone(),
@@ -473,7 +473,42 @@ pub fn run() {
             .inner_size(1180.0, 820.0)
             .min_inner_size(960.0, 600.0)
             .build()?;
+
+            // 系统托盘：常驻图标，关窗最小化到托盘，左键/菜单恢复
+            let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = MenuBuilder::new(app).items(&[&show_item, &quit_item]).build()?;
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("chameleon")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => show_main_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // 关闭主窗口 → 隐藏到托盘（不退出），避免找不到已运行实例
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
@@ -500,5 +535,11 @@ pub fn run() {
         });
 }
 
-#[allow(unused)]
-fn _unused(_: QuickLink) {}
+/// 显示主窗口到前台（从托盘恢复 / 二次启动激活）。
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}

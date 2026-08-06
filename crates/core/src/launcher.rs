@@ -97,6 +97,15 @@ pub async fn launch_role(session: &mut Session, cfg: &GlobalConfig, role: &Role)
     );
     // 首次启动 → 自动打开标记 auto_open 的预设（角色级 + 系统级）；失败跳过不阻塞。
     // 直接 new_page（不走 open_tab）避免 async 互递归。
+    // 角色首页锚点页签：文档标题=角色名，启动时窗口一眼可辨（切其他页签标题变网站名，Chrome 限制）。
+    let home = role_home_url(role);
+    if let Some(run) = session.roles.get_mut(&role.id) {
+        if let Ok(page) = run.browser.new_page(CreateTargetParams::new(&home)).await {
+            let id = page.target_id().clone();
+            let _ = page.activate().await;
+            run.active_page = Some(id);
+        }
+    }
     let auto_urls: Vec<String> = collect_auto_open_urls(role, cfg);
     for url in auto_urls {
         if let Some(run) = session.roles.get_mut(&role.id) {
@@ -326,4 +335,25 @@ fn build_login_js(login: &LoginConfig) -> String {
 }})({}, {}, {})"#,
         u, us, ps
     )
+}
+
+/// 角色首页锚点页签 URL：文档标题=角色名，启动时窗口标题一眼可辨。
+fn role_home_url(role: &Role) -> String {
+    let html = format!(
+        "<!doctype html><html><head><meta charset=utf-8><title>{} — chameleon</title></head><body style='margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#1c1b22;color:#ecebf1;font-family:sans-serif'><div style='text-align:center'><div style='width:72px;height:72px;border-radius:16px;background:{};margin:0 auto 14px;box-shadow:0 0 0 3px #00000033'></div><h1 style='margin:0 0 4px'>{}</h1><p style='color:#9a98a8;margin:0'>chameleon 角色窗口 · 切换标签页标题会变</p></div></body></html>",
+        role.name, role.color, role.name
+    );
+    format!("data:text/html;charset=utf-8,{}", data_encode(&html))
+}
+
+/// data URL 百分号编码：非字母数字符号按 UTF-8 字节 %XX（避免引 percent-encoding 新依赖）。
+fn data_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
 }
