@@ -63,8 +63,14 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
         let mut handler = handler;
         // Handler 流在浏览器关闭（CDP 关闭或用户直接点 X）时结束
         while handler.next().await.is_some() {}
-        // 进程退出 → 删除临时数据目录（spec：工具监听沙箱进程退出即删除）
-        let _ = std::fs::remove_dir_all(&dir_for_cleanup);
+        // 进程退出 → 删除临时数据目录（spec：工具监听沙箱进程退出即删除）。
+        // 滞留的子进程可能短暂占用文件，remove_dir_all 失败则重试几次兜底。
+        for _ in 0..5 {
+            if std::fs::remove_dir_all(&dir_for_cleanup).is_ok() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
     });
     session.sandboxes.insert(
         id.clone(),
@@ -79,6 +85,9 @@ pub async fn close(session: &mut Session, id: &str) -> Result<()> {
         return Err(ChameleonError::SandboxNotFound { id: id.into() });
     };
     let _ = tokio::time::timeout(Duration::from_secs(5), sb.browser.close()).await;
+    // Browser::close 收到 ACK 即返回，进程仍在退出过程中；先等进程真正退出
+    // 再删目录，避免与仍在写 user-data-dir 的进程竞争（同 launcher::close_role）。
+    let _ = tokio::time::timeout(Duration::from_secs(5), sb.browser.wait()).await;
     let _ = fs::remove_dir_all(&sb.dir);
     Ok(())
 }
