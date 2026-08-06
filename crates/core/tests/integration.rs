@@ -12,7 +12,7 @@ use chameleon_core::{
     ports, sandbox, snapshot::SnapshotStore, safety, Session,
 };
 use std::path::PathBuf;
-use std::sync::Once;
+use std::sync::{Arc, Once};
 use tempfile::tempdir;
 
 static ENV_INIT: Once = Once::new();
@@ -292,19 +292,19 @@ async fn close_all_closes_sandbox() {
         return;
     }
     let dir = tempdir().unwrap();
-    let mut cfg = GlobalConfig::default();
-    cfg.data_root = dir.path().join("data");
-    let mut session = Session::default();
+    let cfg = GlobalConfig { data_root: dir.path().join("data"), ..GlobalConfig::default() };
+    let mut sess = Session::default();
     let store = ConfigStore::new(dir.path().join("config.json"));
 
-    let info = sandbox::launch(&mut session, &cfg).await.expect("sandbox launch");
-    assert!(session.sandboxes.contains_key(&info.id));
+    let info = sandbox::launch(&mut sess, &cfg).await.expect("sandbox launch");
+    assert!(sess.sandboxes.contains_key(&info.id));
     assert!(info.dir.exists(), "sandbox dir created");
 
-    let res = batch::close_all(&mut session, &store, &mut cfg).await;
+    let session = Arc::new(tokio::sync::Mutex::new(sess));
+    let res = batch::close_all(session.clone(), store.clone(), Arc::new(tokio::sync::Mutex::new(cfg))).await;
     assert_eq!(res.failed, 0, "close_all errors: {:?}", res.errors);
     assert!(!info.dir.exists(), "sandbox temp dir deleted by close_all");
-    assert!(!session.sandboxes.contains_key(&info.id), "sandbox removed from session");
+    assert!(!session.lock().await.sandboxes.contains_key(&info.id), "sandbox removed from session");
 }
 
 /// #4：快照保存排除角色首页锚点页签（只记真实测试页）。
