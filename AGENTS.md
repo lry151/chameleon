@@ -44,3 +44,83 @@ Issues 与 spec 存在于 GitHub Issues（gh CLI）。见 `docs/agents/issue-tra
 ### Domain docs
 
 单上下文：仓库根部一个 CONTEXT.md + docs/adr/。见 `docs/agents/domain.md`。
+
+
+## 开发环境与构建
+
+### 前置依赖
+
+- Rust (msvc on Windows, stable on Linux) — `rustup`
+- Tauri CLI: `cargo install tauri-cli`
+- Linux (WSL2): `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`
+- 测试需要 Chrome/Chromium 可执行文件在 PATH 中
+
+### 开发模式
+
+```bash
+cargo tauri dev    # 编译 + 启动，热重载前端
+```
+
+### 构建发布
+
+```bash
+cargo tauri build  # 生产构建，产出安装器
+```
+
+## 测试
+
+### 单元测试 + 集成测试
+
+```bash
+# 全部测试（需要 Chrome）
+cargo test -p chameleon-core
+
+# 集成测试带环境变量（headless + no-sandbox 用于 CI）
+CHAMELEON_HEADLESS=1 CHAMELEON_NO_SANDBOX=1 cargo test -p chameleon-core
+```
+
+集成测试在 `crates/core/tests/integration.rs`，对真实 Chrome 运行：启动→CDP 连接→开标签→读激活标签→关窗→沙箱清理→快照恢复。无浏览器时自动跳过。
+
+### 快速语法检查
+
+```bash
+cargo check          # 类型检查，比 build 快
+cargo check -p chameleon-core
+```
+
+## 调试
+
+### 前端调试
+
+- `cargo tauri dev` 启动后，DevTools 可打开（Tauri 支持）
+- 前端日志：`console.log` 输出到终端（Tauri 转发）
+- UI 改动即时热重载，无需重启
+
+### 后端调试
+
+```bash
+# 附加调试器（Rust）
+cargo tauri dev -- --debug   # 或直接用 rust-gdb/lldb
+```
+
+### 日志与错误排查
+
+- 应用日志输出到 stderr，`cargo tauri dev` 终端可见
+- Webkit 警告（`libEGL warning` 等）在 WSL2 无 GPU 环境下正常，可忽略
+- 配置错误 → 检查 `~/.config/chameleon/config.json`（Linux）或 `%APPDATA%/chameleon/`（Windows）
+
+## 验证清单
+
+改动完成后，按以下顺序验证：
+
+1. **编译通过**: `cargo check -p chameleon-core` — 零错误零警告
+2. **测试通过**: `cargo test -p chameleon-core` — 全部绿
+3. **UI 可运行**: `cargo tauri dev` — 窗口正常打开，无控制台报错
+4. **功能验证**: 手动走一遍改动涉及的用户流程（如：新建角色→启动→登录辅助→关闭）
+5. **边界情况**: 空状态、重复操作、错误输入不崩溃
+
+### 发布前
+
+- `cargo tauri build` 成功产出安装器
+- GitHub Actions CI 绿（push 后自动触发）
+- 版本号同步：`Cargo.toml` + `src-tauri/tauri.conf.json` 一致
