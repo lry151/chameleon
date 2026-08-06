@@ -357,6 +357,7 @@ async fn restore_suppresses_auto_open() {
         name: "默认页".into(),
         url: "https://auto-open.example/".into(),
         auto_open: true,
+        login: None,
     });
     let snaps = SnapshotStore::new(&dir.path().join("snapshots"));
     let mut session = Session::default();

@@ -4,11 +4,11 @@
 use crate::config::ConfigStore;
 use crate::error::{ChameleonError, Result};
 use crate::launcher;
-use crate::model::{GlobalConfig, QuickLink};
+use crate::model::{GlobalConfig, QuickLink, QuickLinkLogin};
 use crate::session::Session;
 
 /// 新增角色级预设并持久化。
-pub fn add(store: &ConfigStore, cfg: &mut GlobalConfig, role_id: &str, name: &str, url: &str, auto_open: bool) -> Result<()> {
+pub fn add(store: &ConfigStore, cfg: &mut GlobalConfig, role_id: &str, name: &str, url: &str, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<()> {
     let role = cfg
         .roles
         .iter_mut()
@@ -20,7 +20,7 @@ pub fn add(store: &ConfigStore, cfg: &mut GlobalConfig, role_id: &str, name: &st
     if role.quick_links.iter().any(|q| q.name == name) {
         return Err(ChameleonError::ConfigInvalid { detail: format!("预设「{name}」已存在") });
     }
-    role.quick_links.push(QuickLink { name: name.to_string(), url: url.to_string(), auto_open });
+    role.quick_links.push(QuickLink { name: name.to_string(), url: url.to_string(), auto_open, login });
     store.save(cfg)
 }
 
@@ -40,7 +40,7 @@ pub fn remove(store: &ConfigStore, cfg: &mut GlobalConfig, role_id: &str, name: 
 }
 
 /// 编辑角色级预设（改名/改URL/改auto_open）并持久化。
-pub fn edit(store: &ConfigStore, cfg: &mut GlobalConfig, role_id: &str, old_name: &str, name: &str, url: &str, auto_open: bool) -> Result<()> {
+pub fn edit(store: &ConfigStore, cfg: &mut GlobalConfig, role_id: &str, old_name: &str, name: &str, url: &str, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<()> {
     let role = cfg
         .roles
         .iter_mut()
@@ -57,28 +57,39 @@ pub fn edit(store: &ConfigStore, cfg: &mut GlobalConfig, role_id: &str, old_name
     link.name = name.to_string();
     link.url = url.to_string();
     link.auto_open = auto_open;
+    link.login = login;
     store.save(cfg)
 }
 
 /// 点击预设：在该角色窗口新标签页打开（未启动先拉起）。返回打开的地址。
+/// 若该角色级预设挂有登录凭据，则触发自动登录（填用户名+密码）而非仅打开 URL。
 pub async fn open(session: &mut Session, cfg: &GlobalConfig, role_id: &str, name: &str) -> Result<String> {
     let role = cfg
         .roles
         .iter()
         .find(|r| r.id == role_id)
         .ok_or_else(|| ChameleonError::RoleNotFound { id: role_id.into() })?;
+    // 优先查角色级预设
+    let role_link = role.quick_links.iter().find(|q| q.name == name);
+    if let Some(link) = role_link {
+        if let Some(login) = &link.login {
+            // 有登录凭据 → 自动登录（打开 URL + 填用户名密码）
+            launcher::login_assist_link(session, cfg, role_id, &link.url, login).await?;
+            return Ok(link.url.clone());
+        }
+        // 无登录 → 正常打开
+        launcher::open_tab(session, cfg, role_id, &link.url).await?;
+        return Ok(link.url.clone());
+    }
+    // 角色级没有 → 查所属系统级预设（系统级不支持登录）
     let link = role
-        .quick_links
-        .iter()
-        .find(|q| q.name == name)
-        .or_else(|| {
-            // 角色级没有则查角色所属系统的系统级预设
-            role.system_id.as_ref().and_then(|sid| {
-                cfg.systems
-                    .iter()
-                    .find(|s| s.id == *sid)
-                    .and_then(|s| s.quick_links.iter().find(|q| q.name == name))
-            })
+        .system_id
+        .as_ref()
+        .and_then(|sid| {
+            cfg.systems
+                .iter()
+                .find(|s| s.id == *sid)
+                .and_then(|s| s.quick_links.iter().find(|q| q.name == name))
         })
         .ok_or_else(|| ChameleonError::ConfigInvalid { detail: format!("预设「{name}」不存在") })?;
     launcher::open_tab(session, cfg, role_id, &link.url).await?;
@@ -98,7 +109,7 @@ pub fn add_system(store: &ConfigStore, cfg: &mut GlobalConfig, system_id: &str, 
     if sys.quick_links.iter().any(|q| q.name == name) {
         return Err(ChameleonError::ConfigInvalid { detail: format!("预设「{name}」已存在") });
     }
-    sys.quick_links.push(QuickLink { name: name.to_string(), url: url.to_string(), auto_open });
+    sys.quick_links.push(QuickLink { name: name.to_string(), url: url.to_string(), auto_open, login: None });
     store.save(cfg)
 }
 

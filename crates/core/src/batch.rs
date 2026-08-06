@@ -57,6 +57,26 @@ pub async fn start_system(session: &mut Session, cfg: &GlobalConfig, system_id: 
     out
 }
 
+/// 关闭组：CDP 优雅关闭某系统下全部运行中的角色（记录各自窗口位置）。
+pub async fn close_system(session: &mut Session, store: &ConfigStore, cfg: &mut GlobalConfig, system_id: &str) -> BatchResult {
+    let mut out = BatchResult::default();
+    launcher::prune_dead_roles(session).await;
+    // 先收集需要关闭的角色 ID（避免 cfg 不可变借用与可变借用冲突）
+    let to_close: Vec<String> = cfg
+        .roles
+        .iter()
+        .filter(|r| r.system_id.as_deref() == Some(system_id))
+        .filter(|r| session.is_role_running(&r.id))
+        .map(|r| r.id.clone())
+        .collect();
+    for id in to_close {
+        match launcher::close_role(session, store, cfg, &id).await {
+            Ok(()) => out.ok += 1,
+            Err(e) => out.push_error(e),
+        }
+    }
+    out
+}
 /// 一键关闭所有：CDP 优雅关闭全部测试窗口（记录各自窗口位置），
 /// 再逐个关闭沙箱窗口并删除其临时数据目录。单个沙箱已退出/失败不中断整批。
 pub async fn close_all(session: &mut Session, store: &ConfigStore, cfg: &mut GlobalConfig) -> BatchResult {

@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
+  <header class="topbar" data-tauri-drag-region>
     <div class="brand">
       <span class="logo" aria-hidden="true"></span>
       <div>
@@ -27,6 +27,11 @@
       <button id="btn-export">导出配置</button>
       <button id="btn-import">导入配置</button>
     </nav>
+    <div class="win-controls" data-tauri-drag-region="false">
+      <button class="win-btn" id="btn-min" title="最小化"><svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button class="win-btn" id="btn-max" title="最大化"><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.2" rx="0.5"/></svg></button>
+      <button class="win-btn win-close" id="btn-close" title="关闭"><svg viewBox="0 0 12 12"><line x1="3" y1="3" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/><line x1="9" y1="3" x2="3" y2="9" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </div>
   </header>
 
   <section class="browser-bar">
@@ -88,11 +93,20 @@
     <div class="links">
       <h3>常用 URL 预设 — <span id="links-owner"></span></h3>
       <div id="links-list" class="links-list"></div>
-      <form id="links-form" class="inline-form">
-        <input id="link-name" type="text" placeholder="名称" required />
-        <input id="link-url" type="url" placeholder="https://…" required />
-        <label class="check"><input id="link-auto" type="checkbox" /> 启动时自动打开</label>
-        <button type="submit" class="accent">添加</button>
+      <form id="links-form" class="links-form">
+        <div class="links-form-row">
+          <input id="link-name" type="text" placeholder="名称" required />
+          <input id="link-url" type="url" placeholder="https://…" required />
+          <label class="check"><input id="link-auto" type="checkbox" /> 启动自动打开</label>
+          <label class="check"><input id="link-login-toggle" type="checkbox" /> 登录辅助</label>
+          <button type="submit" class="accent" id="links-submit-btn">添加</button>
+        </div>
+        <div id="links-login-fields" class="links-login-fields">
+          <input id="link-login-user" type="text" placeholder="用户名" />
+          <input id="link-login-pass" type="password" placeholder="密码" />
+          <input id="link-login-usel" type="text" placeholder="用户名选择器（留空自动找）" />
+          <input id="link-login-psel" type="text" placeholder="密码选择器（留空自动找）" />
+        </div>
       </form>
       <div class="dialog-actions">
         <button type="button" id="links-close" class="ghost">关闭</button>
@@ -100,22 +114,6 @@
     </div>
   </dialog>
 
-  <!-- 登录辅助配置 -->
-  <dialog id="login-dialog" class="dialog">
-    <form id="login-form">
-      <h3>登录辅助 — <span id="login-role"></span></h3>
-      <p class="muted small">半自动：打开登录页自动填用户名，密码由你手输。不存储密码。</p>
-      <label>登录页 URL<input id="login-url" type="url" placeholder="https://erp.example.com/login" /></label>
-      <label>用户名<input id="login-username" type="text" placeholder="如：admin" /></label>
-      <label>用户名框 CSS 选择器（可选，留空自动找）<input id="login-usel" type="text" placeholder="如：#username" /></label>
-      <label>密码框 CSS 选择器（可选，默认 input[type=password]）<input id="login-psel" type="text" placeholder="如：#password" /></label>
-      <div class="dialog-actions">
-        <button type="button" id="login-cancel" class="ghost">取消</button>
-        <button type="button" id="login-clear" class="ghost">清除配置</button>
-        <button type="submit" class="primary">保存</button>
-      </div>
-    </form>
-  </dialog>
 
   <div id="toast" class="toast"></div>
   <script src="app.js"></script>

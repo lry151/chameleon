@@ -4,12 +4,27 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// 常用 URL 预设：名称 + 地址 + 是否启动时自动打开。
+/// 可选挂登录凭据（含密码）—— 点击该预设时自动打开 URL 并填用户名/密码。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QuickLink {
     pub name: String,
     pub url: String,
     #[serde(default)]
     pub auto_open: bool,
+    /// 挂在此预设上的登录凭据；Some 时点击该预设触发自动登录（填用户名+密码）。
+    #[serde(default)]
+    pub login: Option<QuickLinkLogin>,
+}
+
+/// 预设级登录凭据：挂在 QuickLink 上的自动登录配置（存密码，角色级隔离）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QuickLinkLogin {
+    pub username: String,
+    pub password: String,
+    /// 用户名输入框 CSS 选择器；None = 自动找（密码框前最近的 text/email）。
+    pub username_selector: Option<String>,
+    /// 密码输入框 CSS 选择器；None = `input[type=password]`。
+    pub password_selector: Option<String>,
 }
 
 /// 登录辅助：半自动登录配置（不存密码）。
