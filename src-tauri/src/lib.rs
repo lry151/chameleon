@@ -66,7 +66,9 @@ pub struct AppStateView {
 async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
-    let session = state.session.lock().await;
+    let mut session = state.session.lock().await;
+    // 先清理被外部直接关闭的死角色，避免 UI 显示陈旧的「运行中」且后续操作挂死
+    launcher::prune_dead_roles(&mut session).await;
     let roles = cfg
         .roles
         .iter()
@@ -152,6 +154,7 @@ async fn launch_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), S
     let cfg = store.load().map_err(msg)?;
     let role = cfg.roles.iter().find(|r| r.id == id).cloned().ok_or_else(|| msg(ChameleonError::RoleNotFound { id: id.clone() }))?;
     let mut session = state.session.lock().await;
+    launcher::prune_dead_roles(&mut session).await;
     launcher::launch_role(&mut session, &cfg, &role, true).await.map_err(msg)
 }
 
@@ -160,6 +163,7 @@ async fn close_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), St
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
+    launcher::prune_dead_roles(&mut session).await;
     launcher::close_role(&mut session, &store, &mut cfg, &id).await.map_err(msg)
 }
 
@@ -194,6 +198,7 @@ async fn login_assist_cmd(state: State<'_, AppState>, role_id: String) -> Result
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
+    launcher::prune_dead_roles(&mut session).await;
     launcher::login_assist(&mut session, &cfg, &role_id).await.map_err(msg)
 }
 
@@ -223,6 +228,7 @@ async fn handoff_cmd(
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
+    launcher::prune_dead_roles(&mut session).await;
     chameleon_core::handoff::handoff(&mut session, &store, &mut cfg, &source_id, &target_id, mode)
         .await
         .map_err(msg)
@@ -256,6 +262,7 @@ async fn open_quick_link(state: State<'_, AppState>, role_id: String, name: Stri
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
+    launcher::prune_dead_roles(&mut session).await;
     quicklinks::open(&mut session, &cfg, &role_id, &name).await.map_err(msg)
 }
 

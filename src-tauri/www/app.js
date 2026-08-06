@@ -344,7 +344,7 @@ function renderLinksList() {
     meta.appendChild(el("span", null, q.name + (q.auto_open ? " ⚡" : "")));
     meta.appendChild(el("small", null, q.url));
     row.appendChild(meta);
-    const a = el("div");
+    const a = el("div", "actions");
     a.appendChild(btn("编辑", "small", () => { $("link-name").value = q.name; $("link-url").value = q.url; $("link-auto").checked = q.auto_open; $("links-dialog").dataset.editing = q.name; }));
     a.appendChild(btn("删除", "danger small", () => removeLink(q.name)));
     row.appendChild(a);

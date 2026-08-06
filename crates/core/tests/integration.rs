@@ -441,3 +441,47 @@ async fn port_occupied_non_browser_hard_errors() {
     // 不 spawn 任何新窗口
     assert!(!session.is_role_running(&role.id), "no window may be spawned");
 }
+
+/// 工单：用户直接关闭浏览器后程序应感知（prune_dead_roles 清理死角色），
+/// 否则 UI 显示陈旧「运行中」、对死浏览器的操作挂死（按钮卡死）。
+#[tokio::test]
+async fn role_pruned_after_browser_closed_externally() {
+    ensure_env();
+    if !browser_available() {
+        return;
+    }
+    let (_dir, _store, cfg, role) = fixture_role("外部关闭").await;
+    let mut session = Session::default();
+    launcher::launch_role(&mut session, &cfg, &role, false).await.expect("launch");
+    assert!(session.is_role_running(&role.id));
+    // 模拟用户直接关浏览器：不走 close_role，程序未感知，session 仍持死句柄
+    {
+        let run = session.roles.get_mut(&role.id).unwrap();
+        let _ = run.browser.close().await;
+    }
+    // 给 handler 流结束一点时间
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    assert!(session.is_role_running(&role.id), "bug: stale entry remains");
+    let removed = launcher::prune_dead_roles(&mut session).await;
+    assert_eq!(removed, 1, "dead role should be pruned");
+    assert!(!session.is_role_running(&role.id), "role removed after prune");
+}
+
+/// close_role 后端口应真正释放，紧接的启动不应误判为僵尸占用（CI 闪窗回归守卫）。
+#[tokio::test]
+async fn close_role_releases_port_for_immediate_relaunch() {
+    ensure_env();
+    if !browser_available() {
+        return;
+    }
+    let (dir, store, mut cfg, role) = fixture_role("端口释放").await;
+    let mut session = Session::default();
+    launcher::launch_role(&mut session, &cfg, &role, false).await.expect("launch");
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.expect("close");
+    // 紧接在同一端口重启 —— 修复前会因端口未释放误判为僵尸占用 → PortTakenNotRole
+    launcher::launch_role(&mut session, &cfg, &role, false).await
+        .expect("relaunch on same port must succeed after close_role released it");
+    assert!(session.is_role_running(&role.id));
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    let _ = dir;
+}
