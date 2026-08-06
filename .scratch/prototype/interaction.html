@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>chameleon 交互原型 — 验证角色/系统/接力/批量流程</title>
+<title>chameleon 交互原型 v2 — 系统容器嵌套角色</title>
 <style>
   body { margin:0; font-family:"Microsoft YaHei",system-ui,sans-serif; background:#1c1b22; color:#ecebf1; }
   .wrap { max-width:1100px; margin:0 auto; padding:18px; }
@@ -14,33 +14,50 @@
   .panel { background:#27262e; border:1px solid #3b3946; border-radius:10px; padding:12px; }
   .panel h2 { margin:0 0 8px; font-size:14px; }
   .state { font-size:13px; }
-  .sys { border-left:4px solid #1abc9c; background:#322f3a; border-radius:6px; padding:8px; margin-bottom:8px; }
-  .sys .nm { font-weight:600; }
-  .role { border-left:6px solid var(--c,#e74c3c); background:#322f3a; border-radius:6px; padding:8px; margin-bottom:8px; }
-  .role .nm { font-weight:600; } .role .badge { font-size:11px; padding:1px 6px; border-radius:9px; background:#2a2832; color:#9a98a8; } .role .badge.on { background:#1abc9c; color:#06231d; }
-  .swatch { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:middle; margin-right:5px; }
-  .acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
-  button { font-family:inherit; font-size:12px; color:#ecebf1; background:#322f3a; border:1px solid #3b3946; border-radius:6px; padding:5px 9px; cursor:pointer; }
+
+  /* 系统容器：较重材质（深色+阴影+大圆角），暗示包含层级 */
+  .sys-box { background:#211f29; border:1px solid #3b3946; border-radius:16px; padding:14px; margin-bottom:16px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+  .sys-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .sys-head .nm { font-size:15px; font-weight:700; }
+  .sys-head .meta { color:#9a98a8; font-size:12px; margin-left:8px; }
+  /* 角色卡：较轻材质（浅色+色块左边条+小圆角），interactive */
+  .role-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; }
+  .role { background:#322f3a; border-left:4px solid var(--c,#e74c3c); border-radius:10px; padding:10px 12px; }
+  .role:hover { background:#3a3744; }
+  .role .top { display:flex; align-items:center; gap:6px; }
+  .role .nm { font-weight:600; font-size:13px; }
+  .role .badge { font-size:11px; padding:1px 7px; border-radius:9px; background:#2a2832; color:#9a98a8; }
+  .role .badge.on { background:#1abc9c; color:#06231d; }
+  .role .sub { color:#9a98a8; font-size:11px; margin:4px 0 8px; }
+  .role .links { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+  .role .links span { background:#2a2832; border:1px solid #3b3946; border-radius:9px; padding:1px 7px; font-size:11px; color:#9a98a8; }
+  .role .acts { display:flex; flex-wrap:wrap; gap:6px; }
+  .sys-links { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
+  .sys-links span { background:#1c1b22; border:1px dashed #3b3946; border-radius:9px; padding:2px 9px; font-size:12px; color:#9a98a8; }
+
+  .acts { display:flex; flex-wrap:wrap; gap:6px; }
+  button { font-family:inherit; font-size:12px; color:#ecebf1; background:#322f3a; border:1px solid #3b3946; border-radius:7px; padding:5px 10px; cursor:pointer; transition:transform 100ms ease-out, background .15s; }
   button:hover { background:#3a3744; }
+  button:active { transform:scale(.97); }
   button.p { background:#1abc9c; border-color:#16a085; color:#06231d; font-weight:600; }
+  button.p:hover { background:#16a085; }
   button.d { background:#e74c3c; border-color:#c0392b; color:#fff; }
-  input,select { background:#322f3a; color:#ecebf1; border:1px solid #3b3946; border-radius:6px; padding:5px; font-family:inherit; font-size:12px; }
+  input,select { background:#322f3a; color:#ecebf1; border:1px solid #3b3946; border-radius:7px; padding:5px; font-family:inherit; font-size:12px; }
   .fp { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   .fp label { font-size:12px; color:#9a98a8; }
-  .changed { background:#3a3744; }
   .tabs { display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; }
-  .tab { padding:5px 10px; border-radius:6px; background:#322f3a; border:1px solid #3b3946; cursor:pointer; font-size:12px; }
+  .tab { padding:5px 10px; border-radius:7px; background:#322f3a; border:1px solid #3b3946; cursor:pointer; font-size:12px; }
   .tab.active { background:#1abc9c; color:#06231d; border-color:#16a085; }
-  .step { background:#322f3a; border-radius:6px; padding:8px; margin-bottom:6px; font-size:12px; }
+  .step { background:#322f3a; border-radius:8px; padding:8px; margin-bottom:6px; font-size:12px; }
   .muted { color:#9a98a8; } .small { font-size:12px; }
-  .empty { color:#9a98a8; font-size:12px; }
+  .empty { color:#9a98a8; font-size:12px; padding:8px; border:1px dashed #3b3946; border-radius:10px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🦎 chameleon 交互原型</h1>
-  <div class="intro">throwaway 原型 — 验证角色/系统/接力/批量/沙箱/快照的交互流程是否合理。点按钮驱动状态，看哪里别扭。</div>
-  <div class="q"><b>要回答的问题</b>：当前交互设计（角色卡片 8 按钮、系统-角色两级、新建角色挂系统、接力模式、批量启动）是否顺手？哪里该改？</div>
+  <h1>🦎 chameleon 交互原型 v2</h1>
+  <div class="intro">系统 = 大圆角矩形容器，角色 = 容器内小卡（包含关系）。交互线性：系统头部承载系统级操作，角色卡承载角色级操作。</div>
+  <div class="q"><b>要验证</b>：嵌套容器是否让「系统包含角色」一眼可辨？操作就近是否更顺手？</div>
 
   <div class="cols">
     <div>
@@ -49,7 +66,7 @@
         <div id="state" class="state"></div>
       </div>
       <div class="panel" style="margin-top:14px">
-        <h2>自由操作（free-play）</h2>
+        <h2>自由操作</h2>
         <div class="fp">
           <input id="sys-name" placeholder="系统名" />
           <button class="p" onclick="act('CREATE_SYSTEM')">新建系统</button>
@@ -64,7 +81,6 @@
           <button onclick="act('LAUNCH_ALL')">一键启动所有</button>
           <button onclick="act('CLOSE_ALL')">一键关闭所有</button>
           <button onclick="act('SANDBOX_LAUNCH')">启动沙箱</button>
-          <button onclick="act('SANDBOX_CLOSE_ALL')">关闭所有沙箱</button>
           <input id="snap-name" placeholder="快照名" />
           <button onclick="act('SNAPSHOT_SAVE')">保存快照</button>
         </div>
@@ -72,17 +88,18 @@
     </div>
     <div>
       <div class="panel">
-        <h2>引导场景（walkthrough）</h2>
+        <h2>引导场景</h2>
         <div id="tabs" class="tabs"></div>
         <div id="walk"></div>
       </div>
       <div class="panel" style="margin-top:14px">
-        <h2>说明</h2>
+        <h2>设计要点</h2>
         <ul class="small muted" style="padding-left:18px;margin:0">
-          <li>角色色块 = 身份识别；系统用绿色左边框</li>
-          <li>启动组 = 启动某系统下全部角色</li>
-          <li>接力并行 = 保留源窗口；接力模式 = 关闭源</li>
-          <li>沙箱用完即删；快照保存/恢复标签页+窗口位置</li>
+          <li>系统容器（深色+阴影+大圆角）= 较重材质，作为结构层</li>
+          <li>角色卡（浅色+色块左边条）= 较轻材质，作为交互层</li>
+          <li>系统级操作（启动组/预设/删除）在容器头部</li>
+          <li>角色级操作（启动/接力/登录/预设/删除）在卡片内</li>
+          <li>未分组角色单独一个「未分组」容器</li>
         </ul>
       </div>
     </div>
@@ -90,7 +107,6 @@
 </div>
 
 <script>
-// —— 纯状态模块（可lift到真实代码） ——
 const COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#34495e'];
 let uidc = 0; const uid = () => 'x'+(++uidc);
 let state = { systems: [], roles: [], sandboxes: [], snapshots: [], lastChange: '' };
@@ -104,132 +120,105 @@ function reducer(s, action) {
     case 'LAUNCH_ALL': return up({ roles: s.roles.map(r=>({...r,running:true})) });
     case 'CLOSE_ALL': return up({ roles: s.roles.map(r=>({...r,running:false})) });
     case 'LAUNCH_SYSTEM': return up({ roles: s.roles.map(r=>r.system_id===action.sid?{...r,running:true}:r) });
-    case 'HANDOFF': {
-      const roles = s.roles.map(r=>({...r}));
-      const tgt = roles.find(r=>r.id===action.target);
-      if (tgt) tgt.running = true;
-      if (action.mode==='relay') { const src=roles.find(r=>r.id===action.source); if(src) src.running=false; }
-      return up({ roles });
-    }
-    case 'ADD_LINK': return up({ roles: s.roles.map(r=>r.id===action.id?{...r, links:[...r.links, {name:action.lname, url:action.url, auto_open:!!action.auto}]}:r) });
-    case 'SET_LOGIN': return up({ roles: s.roles.map(r=>r.id===action.id?{...r, login:action.login}:r) });
-    case 'SANDBOX_LAUNCH': return up({ sandboxes: [...s.sandboxes, {id:uid(), dir:'sandbox/'+uid()}] });
+    case 'HANDOFF': { const roles=s.roles.map(r=>({...r})); const t=roles.find(r=>r.id===action.target); if(t)t.running=true; if(action.mode==='relay'){const src=roles.find(r=>r.id===action.source); if(src)src.running=false;} return up({roles}); }
+    case 'ADD_LINK': return up({ roles: s.roles.map(r=>r.id===action.id?{...r,links:[...r.links,{name:action.lname,auto_open:!!action.auto}]}:r) });
+    case 'SET_LOGIN': return up({ roles: s.roles.map(r=>r.id===action.id?{...r,login:action.login}:r) });
+    case 'SANDBOX_LAUNCH': return up({ sandboxes:[...s.sandboxes,{id:uid(),dir:'sandbox/'+uid()}] });
     case 'SANDBOX_CLOSE_ALL': return up({ sandboxes: [] });
-    case 'SNAPSHOT_SAVE': return up({ snapshots: [...s.snapshots, {name:action.name||'快照'+(s.snapshots.length+1), roles: s.roles.map(r=>({id:r.id,name:r.name,running:r.running,links:[...r.links]}))}] });
-    case 'SNAPSHOT_RESTORE': {
-      const snap = s.snapshots.find(x=>x.name===action.name); if(!snap) return s;
-      const roles = s.roles.map(r=>{ const sr=snap.roles.find(x=>x.id===r.id); return sr?{...r, running:true, links:[...sr.links]}:r; });
-      return up({ roles });
-    }
+    case 'SNAPSHOT_SAVE': return up({ snapshots:[...s.snapshots,{name:action.name||'快照'+(s.snapshots.length+1),roles:s.roles.map(r=>({id:r.id,running:r.running,links:[...r.links]}))}] });
+    case 'SNAPSHOT_RESTORE': { const snap=s.snapshots.find(x=>x.name===action.name); if(!snap)return s; const roles=s.roles.map(r=>{const sr=snap.roles.find(x=>x.id===r.id);return sr?{...r,running:true,links:[...sr.links]}:r;}); return up({roles}); }
     case 'RESET': return { systems: [], roles: [], sandboxes: [], snapshots: [], lastChange:'RESET' };
   }
   return s;
 }
 function act(type, extra={}) { state = reducer(state, {type, ...extra}); render(); }
-// —— 页面 shell ——
+
+function roleCard(r) {
+  const sys = state.systems.find(s=>s.id===r.system_id);
+  const links = r.links.map(l=>`<span>${l.name}${l.auto_open?'⚡':''}</span>`).join('');
+  return `<div class="role" style="--c:${r.color}">
+    <div class="top"><span class="nm">${r.name}</span><span class="badge ${r.running?'on':''}">${r.running?'运行中':'未启动'}</span></div>
+    <div class="links">${links||'<span style="border-style:dashed">无预设</span>'}</div>
+    <div class="acts">
+      ${r.running?'<button onclick="act(\'CLOSE_ROLE\',{id:\''+r.id+'\'})">关闭</button>':'<button class="p" onclick="act(\'LAUNCH_ROLE\',{id:\''+r.id+'\'})">启动</button>'}
+      <button onclick="handoffPick('${r.id}')">接力</button>
+      <button onclick="addLink('${r.id}')">预设</button>
+      ${r.login?'<span class="badge on" style="align-self:center">已配登录</span>':'<button onclick="setLogin(\''+r.id+'\')">登录配置</button>'}
+      <button class="d" onclick="act('DEL_ROLE',{id:'${r.id}'})">移除</button>
+    </div></div>`;
+}
 function render() {
   const el = document.getElementById('state');
   let h = '';
-  if (!state.systems.length && !state.roles.length) { h += '<div class="empty">还没有系统/角色。先新建系统，再新建角色挂系统。</div>'; }
+  if (!state.systems.length && !state.roles.length) { h += '<div class="empty">还没有系统/角色。先新建系统，再在系统内新建角色。</div>'; }
   for (const s of state.systems) {
     const roles = state.roles.filter(r=>r.system_id===s.id);
-    h += `<div class="sys"><span class="nm">${s.name}</span> <span class="muted small">(${roles.length} 角色)</span>
-      <div class="acts"><button class="p" onclick="act('LAUNCH_SYSTEM',{sid:'${s.id}'})">启动组</button>
-      <button class="d" onclick="act('DEL_SYSTEM',{id:'${s.id}'})">删系统</button></div></div>`;
-    for (const r of roles) h += roleCard(r);
+    const sysLinks = s.links.map(l=>`<span>${l}</span>`).join('');
+    h += `<div class="sys-box">
+      <div class="sys-head">
+        <div><span class="nm">${s.name}</span><span class="meta">${roles.length} 角色</span></div>
+        <div class="acts">
+          <button class="p" onclick="act('LAUNCH_SYSTEM',{sid:'${s.id}'})">启动组</button>
+          <button onclick="addSysLink('${s.id}')">系统预设</button>
+          <button class="d" onclick="act('DEL_SYSTEM',{id:'${s.id}'})">删除系统</button>
+        </div>
+      </div>
+      ${sysLinks?`<div class="sys-links">${sysLinks}</div>`:''}
+      <div class="role-grid">${roles.map(roleCard).join('')||'<div class="empty">系统内还没有角色</div>'}</div>
+    </div>`;
   }
   const ungrouped = state.roles.filter(r=>!r.system_id);
-  if (ungrouped.length) { h += '<div class="muted small" style="margin:6px 0">未分组角色：</div>'; for (const r of ungrouped) h += roleCard(r); }
-  if (state.sandboxes.length) { h += '<div class="muted small" style="margin:8px 0">沙箱：</div>'; for (const sb of state.sandboxes) h += `<div class="step">🗑 ${sb.dir} <button class="d" onclick="act('SANDBOX_CLOSE_ALL')">关闭</button></div>`; }
+  if (ungrouped.length) {
+    h += `<div class="sys-box" style="box-shadow:none;border-style:dashed">
+      <div class="sys-head"><div><span class="nm">未分组</span><span class="meta">${ungrouped.length} 角色</span></div></div>
+      <div class="role-grid">${ungrouped.map(roleCard).join('')}</div>
+    </div>`;
+  }
+  if (state.sandboxes.length) { h += `<div class="muted small" style="margin:8px 0">沙箱：</div>`; for (const sb of state.sandboxes) h += `<div class="step">🗑 ${sb.dir} <button class="d" onclick="act('SANDBOX_CLOSE_ALL')">关闭</button></div>`; }
   if (state.snapshots.length) { h += '<div class="muted small" style="margin:8px 0">快照：</div>'; for (const sn of state.snapshots) h += `<div class="step">📸 ${sn.name} <button onclick="act('SNAPSHOT_RESTORE',{name:'${sn.name}'})">恢复</button></div>`; }
-  h += `<div class="muted small" style="margin-top:8px">上次操作：<b>${state.lastChange||'—'}</b></div>`;
+  h += `<div class="muted small" style="margin-top:10px">上次操作：<b>${state.lastChange||'—'}</b></div>`;
   el.innerHTML = h;
-  // 角色新建下拉
   const sel = document.getElementById('role-sys');
   const cur = sel.value; sel.innerHTML = '<option value="">未分组</option>';
   for (const s of state.systems) sel.add(new Option(s.name, s.id));
   sel.value = cur;
 }
-function roleCard(r) {
-  const sys = state.systems.find(s=>s.id===r.system_id);
-  const links = r.links.map(l=>`<span class="muted small">${l.name}${l.auto_open?'⚡':''}</span>`).join(' ');
-  return `<div class="role" style="--c:${r.color}">
-    <span class="swatch" style="background:${r.color}"></span>
-    <span class="nm">${r.name}</span>
-    ${sys?`<span class="muted small"> · ${sys.name}</span>`:''}
-    <span class="badge ${r.running?'on':''}">${r.running?'运行中':'未启动'}</span>
-    <div class="muted small">${links||'无预设'}</div>
-    <div class="acts">
-      ${r.running?'<button onclick="act(\'CLOSE_ROLE\',{id:\''+r.id+'\'})">关闭</button>':'<button class="p" onclick="act(\'LAUNCH_ROLE\',{id:\''+r.id+'\'})">启动</button>'}
-      <button onclick="handoffPick('${r.id}')">接力</button>
-      <button onclick="addLink('${r.id}')">加预设</button>
-      ${r.login?'<button>已配登录</button>':'<button onclick="setLogin(\''+r.id+'\')">配登录</button>'}
-      <button class="d" onclick="act('DEL_ROLE',{id:'${r.id}'})">删</button>
-    </div></div>`;
-}
-// 简化：DEL 操作补上
+function addSysLink(id){ const n=prompt('系统级预设名'); if(n) act('ADD_SYS_LINK',{id,name:n}); }
 const orig = reducer;
-window.reducer = function(s,a){ if(a.type==='DEL_ROLE') return {...s, roles:s.roles.filter(r=>r.id!==a.id), lastChange:'DEL_ROLE'}; if(a.type==='DEL_SYSTEM') return {...s, systems:s.systems.filter(x=>x.id!==a.id), roles:s.roles.map(r=>r.system_id===a.id?{...r,system_id:null}:r), lastChange:'DEL_SYSTEM'}; return orig(s,a); };
-// 接力/加预设/登录 简化交互
-function handoffPick(src) {
-  const others = state.roles.filter(r=>r.id!==src && r.running);
-  if (!others.length) { alert('没有其他运行中角色可接力。先启动另一个角色。'); return; }
-  const tgt = others[0];
-  const mode = confirm('确定 = 并行模式(保留源)；取消 = 接力模式(关闭源)') ? 'parallel' : 'relay';
-  act('HANDOFF', {source:src, target:tgt.id, mode});
-}
-function addLink(id) {
-  const name = prompt('预设名'); if(!name) return;
-  const url = prompt('URL','https://example.com'); if(!url) return;
-  const auto = confirm('启动时自动打开？');
-  act('ADD_LINK', {id, lname:name, url, auto});
-}
-function setLogin(id) {
-  const u = prompt('用户名'); if(!u) return;
-  act('SET_LOGIN', {id, login:{login_url:'about:blank', username:u}});
-}
-// —— walkthroughs ——
+window.reducer = function(s,a){ if(a.type==='DEL_ROLE') return {...s,roles:s.roles.filter(r=>r.id!==a.id),lastChange:'DEL_ROLE'}; if(a.type==='DEL_SYSTEM') return {...s,systems:s.systems.filter(x=>x.id!==a.id),roles:s.roles.map(r=>r.system_id===a.id?{...r,system_id:null}:r),lastChange:'DEL_SYSTEM'}; if(a.type==='ADD_SYS_LINK') return {...s,systems:s.systems.map(x=>x.id===a.id?{...x,links:[...x.links,a.name]}:x),lastChange:'ADD_SYS_LINK'}; return orig(s,a); };
+function handoffPick(src){ const others=state.roles.filter(r=>r.id!==src&&r.running); if(!others.length){alert('没有其他运行中角色可接力。');return;} const tgt=others[0]; const mode=confirm('确定=并行(保留源)；取消=接力(关闭源)')?'parallel':'relay'; act('HANDOFF',{source:src,target:tgt.id,mode}); }
+function addLink(id){ const n=prompt('预设名'); if(!n)return; const auto=confirm('启动时自动打开？'); act('ADD_LINK',{id,lname:n,auto}); }
+function setLogin(id){ const u=prompt('用户名'); if(!u)return; act('SET_LOGIN',{id,login:{username:u}}); }
+
 const WALKS = [
-  { tab:'新建系统+角色挂系统', steps: [
-    {d:'先建一个系统（被测应用，如 ERP系统）', a:()=>act('CREATE_SYSTEM',{name:'ERP系统'})},
-    {d:'再建角色，选刚建的系统', a:()=>act('CREATE_ROLE',{name:'管理员', system_id:state.systems[0]?.id})},
-    {d:'再建第二个角色挂同系统', a:()=>act('CREATE_ROLE',{name:'审计员', system_id:state.systems[0]?.id})},
-    {d:'启动组 — 一次拉起该系统全部角色', a:()=>act('LAUNCH_SYSTEM',{sid:state.systems[0]?.id})},
+  { tab:'建系统→建角色→启动组', steps:[
+    {d:'新建系统（ERP）', a:()=>act('CREATE_SYSTEM',{name:'ERP系统'})},
+    {d:'在系统内新建角色（管理员）', a:()=>act('CREATE_ROLE',{name:'管理员',system_id:state.systems[0]?.id})},
+    {d:'再建第二个角色（审计员）', a:()=>act('CREATE_ROLE',{name:'审计员',system_id:state.systems[0]?.id})},
+    {d:'系统头部「启动组」一次拉起该系统全部角色', a:()=>act('LAUNCH_SYSTEM',{sid:state.systems[0]?.id})},
   ]},
-  { tab:'接力（并行 vs 接力）', steps: [
-    {d:'建两个角色（不同系统或同系统）', a:()=>{act('CREATE_ROLE',{name:'A-管理员'});act('CREATE_ROLE',{name:'B-审计员'});}},
-    {d:'启动两个', a:()=>act('LAUNCH_ALL')},
-    {d:'从 A 接力到 B（并行：保留 A）', a:()=>{const a=state.roles[0],b=state.roles[1]; if(a&&b) act('HANDOFF',{source:a.id,target:b.id,mode:'parallel'});}},
-    {d:'再从 A 接力到 B（接力：关闭 A）', a:()=>{const a=state.roles[0],b=state.roles[1]; if(a&&b) act('HANDOFF',{source:a.id,target:b.id,mode:'relay'});}},
+  { tab:'接力（并行 vs 接力）', steps:[
+    {d:'建两个角色并启动', a:()=>{act('CREATE_ROLE',{name:'A'});act('CREATE_ROLE',{name:'B'});act('LAUNCH_ALL');}},
+    {d:'从 A 接力到 B（并行：保留 A）', a:()=>{const a=state.roles[0],b=state.roles[1]; if(a&&b)act('HANDOFF',{source:a.id,target:b.id,mode:'parallel'});}},
+    {d:'再从 A 接力到 B（接力：关闭 A）', a:()=>{const a=state.roles[0],b=state.roles[1]; if(a&&b)act('HANDOFF',{source:a.id,target:b.id,mode:'relay'});}},
   ]},
-  { tab:'沙箱 + 快照', steps: [
-    {d:'启动一个临时沙箱（用完即删）', a:()=>act('SANDBOX_LAUNCH')},
-    {d:'建角色并启动', a:()=>{act('CREATE_ROLE',{name:'测试员'});act('LAUNCH_ALL')}},
-    {d:'保存当前状态为快照', a:()=>act('SNAPSHOT_SAVE',{name:'回归1'})},
-    {d:'关闭所有角色', a:()=>act('CLOSE_ALL')},
-    {d:'恢复快照 — 角色重新运行', a:()=>act('SNAPSHOT_RESTORE',{name:'回归1'})},
-    {d:'关闭所有沙箱（自动删目录）', a:()=>act('SANDBOX_CLOSE_ALL')},
+  { tab:'沙箱 + 快照', steps:[
+    {d:'启动沙箱（用完即删）', a:()=>act('SANDBOX_LAUNCH')},
+    {d:'建角色并启动', a:()=>{act('CREATE_ROLE',{name:'测试员'});act('LAUNCH_ALL');}},
+    {d:'保存快照', a:()=>act('SNAPSHOT_SAVE',{name:'回归1'})},
+    {d:'一键关闭所有', a:()=>act('CLOSE_ALL')},
+    {d:'恢复快照', a:()=>act('SNAPSHOT_RESTORE',{name:'回归1'})},
+    {d:'关闭沙箱', a:()=>act('SANDBOX_CLOSE_ALL')},
   ]},
 ];
-let curTab = 0; let stepIdx = 0;
-function renderTabs() {
-  document.getElementById('tabs').innerHTML = WALKS.map((w,i)=>`<div class="tab ${i===curTab?'active':''}" onclick="setTab(${i})">${w.tab}</div>`).join('');
-}
-function renderWalk() {
-  const w = WALKS[curTab];
-  let h = `<div class="muted small" style="margin-bottom:6px">${w.tab}</div>`;
-  w.steps.forEach((s,i) => {
-    const done = i < stepIdx;
-    h += `<div class="step">${done?'✓':'○'} ${s.d} ${i===stepIdx?`<button class="p" onclick="nextStep()">执行</button>`:''}</div>`;
-  });
-  if (stepIdx >= w.steps.length) h += `<div class="step"><button onclick="rerun()">重跑</button></div>`;
-  document.getElementById('walk').innerHTML = h;
-}
+let curTab=0, stepIdx=0;
+function renderTabs(){ document.getElementById('tabs').innerHTML=WALKS.map((w,i)=>`<div class="tab ${i===curTab?'active':''}" onclick="setTab(${i})">${w.tab}</div>`).join(''); }
+function renderWalk(){ const w=WALKS[curTab]; let h=`<div class="muted small" style="margin-bottom:6px">${w.tab}</div>`; w.steps.forEach((s,i)=>{ const done=i<stepIdx; h+=`<div class="step">${done?'✓':'○'} ${s.d} ${i===stepIdx?`<button class="p" onclick="nextStep()">执行</button>`:''}</div>`; }); if(stepIdx>=w.steps.length) h+=`<div class="step"><button onclick="rerun()">重跑</button></div>`; document.getElementById('walk').innerHTML=h; }
 function setTab(i){ curTab=i; stepIdx=0; act('RESET'); renderTabs(); renderWalk(); }
 function nextStep(){ const w=WALKS[curTab]; if(stepIdx<w.steps.length){ w.steps[stepIdx].a(); stepIdx++; renderWalk(); } }
 function rerun(){ act('RESET'); stepIdx=0; renderWalk(); }
-window.act = act; window.handoffPick = handoffPick; window.addLink = addLink; window.setLogin = setLogin;
-window.setTab = setTab; window.nextStep = nextStep; window.rerun = rerun; window.WALKS = WALKS;
+window.act=act; window.handoffPick=handoffPick; window.addLink=addLink; window.addSysLink=addSysLink; window.setLogin=setLogin;
+window.setTab=setTab; window.nextStep=nextStep; window.rerun=rerun;
 renderTabs(); renderWalk(); render();
 </script>
 </body>
