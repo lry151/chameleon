@@ -353,6 +353,8 @@ async fn save_snapshot(state: State<'_, AppState>, name: String) -> Result<(), S
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
+    // 先清理死角色：否则 list_tab_urls 会拿到空 Vec，快照静默丢失该角色的所有页签 URL。
+    launcher::prune_dead_roles(&mut session).await;
     state.snapshots().save(&mut session, &store, &mut cfg, &name).await.map_err(msg)
 }
 
@@ -366,6 +368,9 @@ async fn restore_snapshot(state: State<'_, AppState>, name: String) -> Result<()
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
+    // 先清理死角色：否则 launch_role 的幂等守卫对死条目返回 Ok，
+    // 后续 open_tab/close_other_tabs 在死 Browser 上挂起或报错。
+    launcher::prune_dead_roles(&mut session).await;
     state.snapshots().restore(&mut session, &store, &mut cfg, &name).await.map_err(msg)
 }
 

@@ -297,13 +297,11 @@ pub async fn find_role_home_tab(session: &Session, role_id: &str) -> Option<Targ
 }
 
 /// 关闭角色窗口内除 `keep` 外的所有标签页（快照恢复用）。
+/// 若 `keep` 为空，则关闭所有标签页。
 pub async fn close_other_tabs(session: &mut Session, role_id: &str, keep: &[TargetId]) {
     let Some(run) = session.roles.get(role_id) else {
         return;
     };
-    if keep.is_empty() {
-        return;
-    }
     if let Ok(pages) = run.browser.pages().await {
         for page in pages {
             if !keep.contains(page.target_id()) {

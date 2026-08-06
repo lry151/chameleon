@@ -420,7 +420,22 @@ $("btn-launch-all").onclick = () => invoke("launch_all").then((r) => { toast(`�
 $("btn-close-all").onclick = () => invoke("close_all").then((r) => { toast(`已关闭 ${r.ok} 个窗口${r.failed ? `，${r.failed} 个失败` : ""}`, r.failed ? "err" : "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
 $("btn-sandbox").onclick = () => invoke("launch_sandbox").then(() => { toast("已启动临时沙箱", "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
 $("btn-cleanup").onclick = () => invoke("cleanup_temp").then((n) => { toast(`已清理 ${n} 个临时目录`, "ok"); refresh(); }).catch((e) => toast(String(e), "err"));
-$("btn-export").onclick = async () => { const p = await invoke("export_config_cmd"); if (p) toast(`配置已导出至：${p}`, "ok"); };
-$("btn-import").onclick = async () => { const n = await invoke("import_config_cmd"); if (n > 0) toast(`已导入 ${n} 个角色`, "ok"); };
+$("btn-export").onclick = async () => {
+  try {
+    const p = await invoke("export_config_cmd");
+    if (p) toast(`配置已导出至：${p}`, "ok");
+  } catch (e) {
+    toast(typeof e === "string" ? e : String(e), "err");
+  }
+};
+$("btn-import").onclick = async () => {
+  try {
+    const n = await invoke("import_config_cmd");
+    if (n > 0) toast(`已导入 ${n} 个角色`, "ok");
+    await refresh();
+  } catch (e) {
+    toast(typeof e === "string" ? e : String(e), "err");
+  }
+};
 
 refresh();
