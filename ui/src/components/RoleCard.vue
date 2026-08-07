@@ -24,7 +24,8 @@
 
     <!-- 中部：preset chips -->
     <div class="role-links">
-      <template v-if="role.quick_links.length > 0">
+      <!-- 角色有自己的预设 -->
+      <template v-if="hasOwnLinks">
         <n-button
           v-for="link in role.quick_links"
           :key="link.name"
@@ -36,6 +37,35 @@
           {{ link.name || link.url }}
         </n-button>
       </template>
+      <!-- 角色没有预设，但系统有预设 -->
+      <template v-else-if="inheritedLinks.length > 0">
+        <div class="inherited-links">
+          <div class="inherited-header">
+            <n-text depth="3" class="inherited-label">↓ 系统预设</n-text>
+            <n-button
+              size="tiny"
+              quaternary
+              class="inherited-apply-btn"
+              @click="applySystemLinks"
+            >
+              应用到角色
+            </n-button>
+          </div>
+          <div class="inherited-chips">
+            <n-button
+              v-for="link in inheritedLinks"
+              :key="link.name"
+              size="tiny"
+              secondary
+              class="inherited-link-chip"
+              @click="openLink(link.url)"
+            >
+              {{ link.name || link.url }}
+            </n-button>
+          </div>
+        </div>
+      </template>
+      <!-- 角色和系统都没有预设 -->
       <n-text v-else depth="3" class="role-links-empty">
         暂无预设
       </n-text>
@@ -109,13 +139,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useMessage } from "naive-ui";
-import type { RoleView } from "../types/api";
+import type { QuickLink, RoleView } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { createSpring } from "../utils/spring";
 import { loadAppState } from "../composables/useAppState";
 
 const props = defineProps<{
   role: RoleView;
+  systemLinks?: QuickLink[];
 }>();
 
 const emit = defineEmits<{
@@ -130,6 +161,25 @@ const busy = ref(false);
 const showDeletePop = ref(false);
 const swatchScale = ref(1);
 const message = useMessage();
+
+const hasOwnLinks = computed(() => props.role.quick_links.length > 0);
+const inheritedLinks = computed(() =>
+  !hasOwnLinks.value ? (props.systemLinks ?? []) : [],
+);
+
+async function applySystemLinks() {
+  for (const link of inheritedLinks.value) {
+    await tauri.addQuickLink(
+      props.role.id,
+      link.name,
+      link.url,
+      link.auto_open,
+      link.login,
+    );
+  }
+  await loadAppState();
+  message.success(`已应用 ${inheritedLinks.value.length} 个系统预设`);
+}
 
 /// 「运行中」标签文字颜色：按角色颜色亮度选深/浅，保证在浅色(如黄 #f1c40f)棋盘上可读。
 const tagTextColor = computed(() => readableOn(props.role.color));
@@ -185,6 +235,7 @@ async function handleLaunch() {
   try {
     await tauri.launchRole(props.role.id);
     triggerPulse();
+    await loadAppState();
   } catch (err) {
     message.error(`启动「${props.role.name}」失败，请检查浏览器路径`);
   } finally {
@@ -197,6 +248,7 @@ async function handleClose() {
   try {
     await tauri.closeRole(props.role.id);
     triggerPulse();
+    await loadAppState();
   } catch (err) {
     message.error(`关闭「${props.role.name}」失败，请稍后重试`);
   } finally {
@@ -277,6 +329,45 @@ function openLink(url: string) {
 
 .role-links-empty {
   font-size: 12px;
+}
+/* 系统预设继承区域 */
+.inherited-links {
+  width: 100%;
+  padding: 8px;
+  background: rgba(128, 128, 128, 0.04);
+  border: 1px dashed rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inherited-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inherited-label {
+  font-size: 11px;
+}
+
+.inherited-apply-btn {
+  font-size: 11px;
+}
+
+.inherited-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inherited-link-chip {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
 }
 
 .role-actions {

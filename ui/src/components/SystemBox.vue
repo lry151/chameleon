@@ -57,6 +57,7 @@
         v-for="role in roles"
         :key="role.id"
         :role="role"
+        :system-links="system?.quick_links ?? []"
         @presets="(r) => $emit('presets', r)"
         @handoff="(r) => $emit('handoff', r)"
         @edit="(r) => $emit('edit-role', r)"
