@@ -27,7 +27,7 @@
     <n-space :size="8" class="topbar-group topbar-tools">
       <n-button size="medium" @mousedown.stop>导出</n-button>
       <n-button size="medium" @mousedown.stop>导入</n-button>
-      <n-button quaternary circle size="medium" @mousedown.stop aria-label="设置">
+      <n-button quaternary circle size="medium" @mousedown.stop @click="$emit('openSettings')" aria-label="设置">
         <template #icon>
           <span aria-hidden="true">⚙</span>
         </template>
@@ -64,6 +64,10 @@
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { tauri } from "../composables/useTauri";
+
+defineEmits<{
+  (e: "openSettings"): void;
+}>();
 
 function onDrag(e: MouseEvent) {
   // 仅左键触发；按钮已通过 @mousedown.stop 阻止冒泡。

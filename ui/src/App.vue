@@ -7,11 +7,12 @@
       <n-dialog-provider>
         <n-message-provider>
           <div class="app-shell">
-            <Topbar />
+            <Topbar @open-settings="showSettings = true" />
             <main class="app-main">
-              <n-p depth="3">Hello chameleon</n-p>
+              <MainView />
             </main>
           </div>
+          <SettingsDialog v-model:show="showSettings" />
         </n-message-provider>
       </n-dialog-provider>
     </n-loading-bar-provider>
@@ -19,17 +20,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { ref } from "vue";
 import Topbar from "./components/Topbar.vue";
+import MainView from "./views/MainView.vue";
+import SettingsDialog from "./components/SettingsDialog.vue";
 import { useTheme } from "./composables/useTheme";
 import { loadPrefs } from "./composables/usePrefs";
 
 const { naiveTheme, fluentOverride } = useTheme();
+const showSettings = ref(false);
 
-onMounted(() => {
-  // 启动时加载偏好（主题 / accent / opacity）。
-  loadPrefs();
-});
+// 启动时加载偏好（主题 / accent / opacity）。
+loadPrefs();
 </script>
 
 <style>
