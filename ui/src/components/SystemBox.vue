@@ -28,7 +28,7 @@
           :keyboard="true"
           @select="handleSystemMenuSelect"
         >
-          <n-button size="small" quaternary circle aria-label="系统操作">
+          <n-button size="small" quaternary aria-label="系统操作">
             <template #icon>
               <span aria-hidden="true">⋯</span>
             </template>

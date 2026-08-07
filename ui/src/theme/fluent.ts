@@ -10,7 +10,7 @@ export function buildFluentThemeOverride(accent: string): GlobalThemeOverrides {
     common: {
       fontFamily: FONT_FAMILY,
       fontSize: "14px",
-      borderRadius: "999px",
+      borderRadius: "4px",
 
       primaryColor: accent,
       primaryColorHover: shiftLightness(accent, +10),

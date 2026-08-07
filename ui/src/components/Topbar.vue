@@ -238,6 +238,7 @@ function handleMoreSelect(key: string) {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-right: 8px;
 }
 
 .topbar-logo {

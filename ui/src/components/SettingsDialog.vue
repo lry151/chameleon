@@ -53,12 +53,31 @@
           />
         </n-space>
       </div>
+
+      <!-- 段 4：浏览器 -->
+      <div class="settings-section">
+        <n-text class="settings-label">浏览器</n-text>
+        <div class="settings-row">
+          <n-select
+            :value="browserPath"
+            :options="browserOptions"
+            placeholder="选择浏览器"
+            filterable
+            class="settings-browser-select"
+            @update:value="onSelectBrowser"
+          />
+          <n-button @click="handlePickBrowser">选择文件</n-button>
+        </div>
+      </div>
     </div>
   </n-modal>
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from "vue";
+import { computed, reactive, watch } from "vue";
+import { appState, loadAppState } from "../composables/useAppState";
+import { tauri } from "../composables/useTauri";
+import { useMessage } from "naive-ui";
 import { prefs, savePrefs } from "../composables/usePrefs";
 import type { ThemeMode, UiPreferences } from "../types/api";
 
@@ -69,6 +88,38 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:show", value: boolean): void;
 }>();
+const message = useMessage();
+
+const browserPath = computed(() => appState.value.browser_path ?? null);
+const browserOptions = computed(() =>
+  appState.value.browser_candidates.map((c) => ({
+    label: `${c.name} — ${c.path}`,
+    value: c.path,
+  })),
+);
+
+async function onSelectBrowser(path: string) {
+  try {
+    await tauri.setBrowserPath(path);
+    await loadAppState();
+    message.success("浏览器已切换");
+  } catch (err) {
+    message.error("切换浏览器失败");
+  }
+}
+
+async function handlePickBrowser() {
+  try {
+    const picked = await tauri.pickBrowserPath();
+    if (picked) {
+      await tauri.setBrowserPath(picked);
+      await loadAppState();
+      message.success("浏览器已切换");
+    }
+  } catch (err) {
+    message.error("选择浏览器失败");
+  }
+}
 
 const ACCENT_PALETTE = [
   "#1abc9c", // 默认 teal
