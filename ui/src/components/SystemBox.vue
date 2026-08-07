@@ -21,6 +21,14 @@
         >
           启动组
         </n-button>
+        <n-button
+          v-if="system && hasRunningRoles"
+          size="small"
+          :loading="busyClose"
+          @click="handleCloseSystem"
+        >
+          关闭组
+        </n-button>
         <n-dropdown
           v-if="system"
           trigger="click"
@@ -103,7 +111,12 @@ const emit = defineEmits<{
 }>();
 
 const busyLaunch = ref(false);
+const busyClose = ref(false);
 const showDeleteWithRoles = ref(false);
+
+const hasRunningRoles = computed(() =>
+  props.roles.some((r) => r.running),
+);
 
 const systemMenuOptions = computed(() => [
   { label: "编辑", key: "edit" },
@@ -124,6 +137,16 @@ async function handleLaunchSystem() {
   }
 }
 
+async function handleCloseSystem() {
+  if (!props.system) return;
+  busyClose.value = true;
+  try {
+    await tauri.closeSystem(props.system.id);
+    await loadAppState();
+  } finally {
+    busyClose.value = false;
+  }
+}
 function handleSystemMenuSelect(key: string) {
   if (!props.system) return;
   if (key === "edit") emit("edit-system", props.system);

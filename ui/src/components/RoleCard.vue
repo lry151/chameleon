@@ -18,7 +18,6 @@
         >
           运行中
         </n-tag>
-        <span class="role-port">:{{ role.cdp_port }}</span>
       </div>
     </template>
 
@@ -98,7 +97,6 @@
           <n-button size="small" secondary @click="$emit('handoff', role)">
             接力
           </n-button>
-        </n-space>
 
         <!-- 更多操作：popconfirm（删除确认）+ dropdown（编辑/克隆） -->
         <n-popconfirm
@@ -120,7 +118,6 @@
               <n-button
                 size="small"
                 quaternary
-                circle
                 aria-label="更多操作"
               >
                 <template #icon>
@@ -131,6 +128,7 @@
           </template>
           确定删除角色「{{ role.name }}」？
         </n-popconfirm>
+        </n-space>
       </div>
     </template>
   </n-card>
@@ -304,13 +302,6 @@ function openLink(url: string) {
   white-space: nowrap;
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.role-port {
-  font-size: 12px;
-  opacity: 0.6;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
 }
 
 .role-links {
