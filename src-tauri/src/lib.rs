@@ -24,6 +24,8 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
+mod vibrancy;
+
 fn msg(e: ChameleonError) -> String {
     e.message()
 }
@@ -345,11 +347,27 @@ async fn get_ui_preferences(state: State<'_, AppState>) -> Result<UiPreferences,
 }
 
 #[tauri::command]
-async fn set_ui_preferences(state: State<'_, AppState>, prefs: UiPreferences) -> Result<(), String> {
+async fn set_ui_preferences(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    prefs: UiPreferences,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    cfg.ui_preferences = prefs;
-    store.save(&cfg).map_err(msg)
+    let old_theme = cfg.ui_preferences.theme;
+    cfg.ui_preferences = prefs.clone();
+    store.save(&cfg).map_err(msg)?;
+
+    // 仅当 theme 真正变化时重应用 vibrancy，避免冗余 Win32 调用。
+    // 非 Windows 平台 apply 为 no-op，无需 cfg gate。
+    if old_theme != prefs.theme {
+        if let Some(window) = app.get_webview_window("main") {
+            if let Err(e) = vibrancy::apply_vibrancy_for_theme(&window, prefs.theme) {
+                eprintln!("切换 vibrancy 失败: {e}");
+            }
+        }
+    }
+    Ok(())
 }
 
 /// —— 配置导出 / 导入 ——
@@ -540,7 +558,7 @@ pub fn run() {
             session: Arc::new(tokio::sync::Mutex::new(Session::default())),
             app_dir: app_dir.clone(),
         })
-        .setup(|app| {
+        .setup(move |app| {
             tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -553,22 +571,15 @@ pub fn run() {
             .transparent(true)
             .build()?;
 
-            // Windows 原生 Mica/Acrylic 背景效果
-            #[cfg(target_os = "windows")]
-            {
-                use window_vibrancy::{apply_mica, apply_acrylic};
-                use windows_version::OsVersion;
-                if let Some(window) = app.get_webview_window("main") {
-                    let ver = OsVersion::current();
-                    // Windows 11 (build 22000+) → Mica；Windows 10 → Acrylic
-                    let result = if ver.major >= 10 && ver.build >= 22000 {
-                        apply_mica(&window, None)
-                    } else {
-                        apply_acrylic(&window, Some((33, 31, 41, 180)))
-                    };
-                    if let Err(e) = result {
-                        eprintln!("window-vibrancy 失败: {e}");
-                    }
+            // Hybrid 主题：启动时按当前 prefs.theme 应用 vibrancy。
+            // 非 Windows 平台 apply 为 no-op。
+            if let Some(window) = app.get_webview_window("main") {
+                let initial_theme = ConfigStore::new(app_dir.join("config.json"))
+                    .load()
+                    .map(|c| c.ui_preferences.theme)
+                    .unwrap_or_default();
+                if let Err(e) = vibrancy::apply_vibrancy_for_theme(&window, initial_theme) {
+                    eprintln!("启动 vibrancy 失败: {e}");
                 }
             }
 
