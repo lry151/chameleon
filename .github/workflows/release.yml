@@ -28,17 +28,15 @@ jobs:
           shared-key: release-windows-msvc
           save-if: ${{ github.ref_type == 'tag' }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-          cache-dependency-path: ui/pnpm-lock.yaml
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       # msvc 目标下 webview2-com-sys 静态链接 WebView2LoaderStatic.lib，
       # exe 内嵌加载器 → 单文件可跑，无需随附 DLL（参考 t8y2/dbx 发布方式）。
