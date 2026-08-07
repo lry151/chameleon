@@ -24,6 +24,12 @@
         @system-deleted="refresh"
       />
     </div>
+
+    <LinksDialog
+      v-model:show="showLinks"
+      :owner-id="linksOwnerId"
+      :owner-kind="linksOwnerKind"
+    />
   </div>
 </template>
 
@@ -32,6 +38,7 @@ import { computed, onMounted, ref } from "vue";
 import type { RoleView } from "../types/api";
 import { loadAppState, systemBuckets } from "../composables/useAppState";
 import SystemBox from "../components/SystemBox.vue";
+import LinksDialog from "../components/LinksDialog.vue";
 
 const loading = ref(true);
 
@@ -46,9 +53,19 @@ async function refresh() {
   await loadAppState();
 }
 
+// —— LinksDialog ——
+const showLinks = ref(false);
+const linksOwnerId = ref("");
+const linksOwnerKind = ref<"role" | "system">("role");
+
+function onPresets(role: RoleView) {
+  linksOwnerId.value = role.id;
+  linksOwnerKind.value = "role";
+  showLinks.value = true;
+}
+
 // 后续工单（#7 RoleDialog 等）会接手这些事件；
 // 目前仅占位，避免未处理事件警告。
-function onPresets(_role: RoleView) { /* TODO: LinksDialog */ }
 function onHandoff(_role: RoleView) { /* TODO: HandoffDialog */ }
 function onEdit(_role: RoleView) { /* TODO: RoleDialog */ }
 function onClone(_role: RoleView) { /* TODO: RoleDialog (clone mode) */ }
