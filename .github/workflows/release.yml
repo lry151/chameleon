@@ -36,7 +36,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       # msvc 目标下 webview2-com-sys 静态链接 WebView2LoaderStatic.lib，
       # exe 内嵌加载器 → 单文件可跑，无需随附 DLL（参考 t8y2/dbx 发布方式）。
