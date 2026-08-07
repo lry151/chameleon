@@ -16,6 +16,12 @@ export const LIGHT_BG = "#F3F3F3";
 
 export function applyBodyBackground(isDark: boolean): void {
   const { style } = document.body;
-  style.backgroundColor = isDark ? "transparent" : LIGHT_BG;
+  if (isDark) {
+    style.backgroundColor = "transparent";
+    style.color = "#E8E8E8";
+  } else {
+    style.backgroundColor = LIGHT_BG;
+    style.color = "#1A1A1A";
+  }
   style.colorScheme = isDark ? "dark" : "light";
 }
