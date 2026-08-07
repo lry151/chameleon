@@ -18,27 +18,44 @@
         :roles="bucket.roles"
         @presets="onPresets"
         @handoff="onHandoff"
-        @edit="onEdit"
-        @clone="onClone"
+        @edit-role="$emit('editRole', $event)"
+        @clone-role="$emit('cloneRole', $event)"
+        @edit-system="$emit('editSystem', $event)"
+        @presets-system="onPresetsSystem"
         @role-deleted="refresh"
         @system-deleted="refresh"
       />
     </div>
 
+    <!-- LinksDialog（角色 / 系统级 Quick Links 管理） -->
     <LinksDialog
       v-model:show="showLinks"
       :owner-id="linksOwnerId"
       :owner-kind="linksOwnerKind"
+    />
+
+    <!-- HandoffDialog（接力） -->
+    <HandoffDialog
+      v-if="handoffSource"
+      v-model:show="showHandoff"
+      :source="handoffSource"
+      @done="refresh"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import type { RoleView } from "../types/api";
+import type { RoleView, System } from "../types/api";
 import { loadAppState, systemBuckets } from "../composables/useAppState";
 import SystemBox from "../components/SystemBox.vue";
 import LinksDialog from "../components/LinksDialog.vue";
+import HandoffDialog from "../components/HandoffDialog.vue";
+defineEmits<{
+  (e: "editRole", role: RoleView): void;
+  (e: "cloneRole", role: RoleView): void;
+  (e: "editSystem", system: System): void;
+}>();
 
 const loading = ref(true);
 
@@ -64,11 +81,20 @@ function onPresets(role: RoleView) {
   showLinks.value = true;
 }
 
-// 后续工单（#7 RoleDialog 等）会接手这些事件；
-// 目前仅占位，避免未处理事件警告。
-function onHandoff(_role: RoleView) { /* TODO: HandoffDialog */ }
-function onEdit(_role: RoleView) { /* TODO: RoleDialog */ }
-function onClone(_role: RoleView) { /* TODO: RoleDialog (clone mode) */ }
+function onPresetsSystem(systemId: string) {
+  linksOwnerId.value = systemId;
+  linksOwnerKind.value = "system";
+  showLinks.value = true;
+}
+
+// —— HandoffDialog ——
+const showHandoff = ref(false);
+const handoffSource = ref<RoleView | null>(null);
+
+function onHandoff(role: RoleView) {
+  handoffSource.value = role;
+  showHandoff.value = true;
+}
 </script>
 
 <style scoped>

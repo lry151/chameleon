@@ -13,6 +13,7 @@
       </div>
       <n-space :size="8">
         <n-button
+          v-if="system"
           type="primary"
           size="small"
           :loading="busyLaunch"
@@ -20,32 +21,19 @@
         >
           启动组
         </n-button>
-        <n-popconfirm
+        <n-dropdown
           v-if="system"
-          :show="showDeletePop"
-          :positive-text="'删除'"
-          :negative-text="'取消'"
-          @positive-click="doDeleteSystem"
-          @negative-click="showDeletePop = false"
-          @click-outside="showDeletePop = false"
+          trigger="click"
+          :options="systemMenuOptions"
+          :keyboard="true"
+          @select="handleSystemMenuSelect"
         >
-          <template #trigger>
-            <n-dropdown
-              trigger="click"
-              :options="systemMenuOptions"
-              :keyboard="true"
-              :disabled="showDeletePop"
-              @select="handleSystemMenuSelect"
-            >
-              <n-button size="small" quaternary circle aria-label="系统操作">
-                <template #icon>
-                  <span aria-hidden="true">⋯</span>
-                </template>
-              </n-button>
-            </n-dropdown>
-          </template>
-          确定删除系统「{{ system.name }}」？角色将变为未分组。
-        </n-popconfirm>
+          <n-button size="small" quaternary circle aria-label="系统操作">
+            <template #icon>
+              <span aria-hidden="true">⋯</span>
+            </template>
+          </n-button>
+        </n-dropdown>
       </n-space>
     </div>
 
@@ -71,11 +59,20 @@
         :role="role"
         @presets="(r) => $emit('presets', r)"
         @handoff="(r) => $emit('handoff', r)"
-        @edit="(r) => $emit('edit', r)"
-        @clone="(r) => $emit('clone', r)"
+        @edit="(r) => $emit('edit-role', r)"
+        @clone="(r) => $emit('clone-role', r)"
         @deleted="$emit('role-deleted')"
       />
     </div>
+
+    <!-- 删除系统 + 角色 确认 dialog -->
+    <DeleteConfirm
+      v-model:show="showDeleteWithRoles"
+      :title="'删除系统 + 角色'"
+      :message="`确定删除系统「${system?.name}」及其所有角色？此操作不可撤销。`"
+      confirm-text="确认删除"
+      @confirm="doDeleteSystemWithRoles"
+    />
   </div>
 </template>
 
@@ -85,6 +82,7 @@ import type { RoleView, System } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { loadAppState } from "../composables/useAppState";
 import RoleCard from "./RoleCard.vue";
+import DeleteConfirm from "./DeleteConfirm.vue";
 
 const props = defineProps<{
   /// null = ungrouped bucket (roles without a system).
@@ -95,17 +93,20 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "presets", role: RoleView): void;
   (e: "handoff", role: RoleView): void;
-  (e: "edit", role: RoleView): void;
-  (e: "clone", role: RoleView): void;
+  (e: "edit-role", role: RoleView): void;
+  (e: "clone-role", role: RoleView): void;
+  (e: "edit-system", system: System): void;
+  (e: "presets-system", systemId: string): void;
   (e: "role-deleted"): void;
   (e: "system-deleted"): void;
 }>();
 
 const busyLaunch = ref(false);
-const showDeletePop = ref(false);
+const showDeleteWithRoles = ref(false);
 
 const systemMenuOptions = computed(() => [
   { label: "编辑", key: "edit" },
+  { label: "管理预设", key: "presets" },
   { type: "divider", key: "d1" },
   { label: "删除系统", key: "delete" },
   { label: "删除系统 + 角色", key: "delete-with-roles", props: { type: "error" as const } },
@@ -123,13 +124,15 @@ async function handleLaunchSystem() {
 }
 
 function handleSystemMenuSelect(key: string) {
-  if (key === "delete") showDeletePop.value = true;
-  else if (key === "delete-with-roles") doDeleteSystemWithRoles();
+  if (!props.system) return;
+  if (key === "edit") emit("edit-system", props.system);
+  else if (key === "presets") emit("presets-system", props.system.id);
+  else if (key === "delete") doDeleteSystem();
+  else if (key === "delete-with-roles") showDeleteWithRoles.value = true;
 }
 
 async function doDeleteSystem() {
   if (!props.system) return;
-  showDeletePop.value = false;
   await tauri.deleteSystem(props.system.id);
   await loadAppState();
   emit("system-deleted");
@@ -137,11 +140,6 @@ async function doDeleteSystem() {
 
 async function doDeleteSystemWithRoles() {
   if (!props.system) return;
-  // 重量确认：使用原生 confirm 做二次兜底（ADR-0010 独立确认步骤）。
-  const ok = window.confirm(
-    `确定删除系统「${props.system.name}」及其所有角色？此操作不可撤销。`,
-  );
-  if (!ok) return;
   await tauri.deleteSystemWithRoles(props.system.id);
   await loadAppState();
   emit("system-deleted");

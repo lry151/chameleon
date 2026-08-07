@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppStateView,
   BatchResult,
+  HandoffMode,
   QuickLinkLogin,
   Role,
   System,
@@ -110,6 +111,38 @@ export const tauri = {
     }),
   removeSystemQuickLink: (systemId: string, name: string) =>
     invoke<void>("remove_system_quick_link", { systemId, name }),
+
+  // —— 接力 ——
+  handoff: (sourceId: string, targetId: string, mode: HandoffMode) =>
+    invoke<string>("handoff_cmd", { sourceId, targetId, mode }),
+
+  // —— 沙箱 ——
+  launchSandbox: () =>
+    invoke<{ id: string; dir: string }>("launch_sandbox"),
+  closeSandbox: (id: string) =>
+    invoke<void>("close_sandbox", { id }),
+  cleanupTemp: () =>
+    invoke<number>("cleanup_temp"),
+
+  // —— 快照 ——
+  saveSnapshot: (name: string) =>
+    invoke<void>("save_snapshot", { name }),
+  restoreSnapshot: (name: string) =>
+    invoke<void>("restore_snapshot", { name }),
+  deleteSnapshot: (name: string) =>
+    invoke<void>("delete_snapshot", { name }),
+
+  // —— 浏览器 ——
+  pickBrowserPath: () =>
+    invoke<string | null>("pick_browser_path"),
+  setBrowserPath: (path: string) =>
+    invoke<void>("set_browser_path", { path }),
+
+  // —— 配置导出 / 导入 ——
+  exportConfig: () =>
+    invoke<string | null>("export_config_cmd"),
+  importConfig: () =>
+    invoke<number>("import_config_cmd"),
 
   // —— 偏好 ——
   getUiPreferences: () =>
