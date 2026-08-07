@@ -4,7 +4,10 @@
   "version": "0.5.6",
   "identifier": "com.chameleon.tool",
   "build": {
-    "frontendDist": "www"
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "www",
+    "beforeDevCommand": "pnpm --dir ../ui dev",
+    "beforeBuildCommand": "pnpm --dir ../ui build"
   },
   "app": {
     "withGlobalTauri": true,
