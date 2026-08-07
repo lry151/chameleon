@@ -35,16 +35,29 @@
 
 ## 从源码构建
 
+### 前置依赖
+
+- Rust（msvc on Windows，stable on Linux）—— `rustup`
+- Tauri CLI：`cargo install tauri-cli`
+- Node.js 18+、pnpm
+- Linux (WSL2)：`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`
+- 测试需要 Chrome/Chromium 可执行文件在 PATH 中
+
+### 开发模式
+
 ```bash
-# 需要 Rust + 目标 x86_64-pc-windows-msvc（Windows）或 mingw + x86_64-pc-windows-gnu
-cargo build --release -p chameleon-app
+# 启动 Tauri + 新 UI（Vue 3 + Naive UI），前端在 ui/ 热重载
+cargo tauri dev
 ```
 
-或用 Tauri 官方打包（产 NSIS 安装器）：
+前端源码在 `ui/`（Vite + Vue 3 + TS + Naive UI）。修改 `ui/src/**` 即时热重载，无需重启 Rust。
+单独启动前端 dev server：`pnpm --dir ui dev`（默认 `http://localhost:1420`）。
+单独构建前端：`pnpm --dir ui build`，产物输出到 `src-tauri/www/`。
+
+### 构建发布
 
 ```bash
-cargo install tauri-cli
-cargo tauri build
+cargo tauri build   # 自动构建前端 + 打包 NSIS 安装器
 ```
 
 打 tag 自动出包（GitHub Actions，windows runner + msvc）：
@@ -59,7 +72,21 @@ git tag v0.2.0 && git push origin v0.2.0
 
 ## 技术栈
 
-Tauri 2（Web 前端 + Rust 后端）+ chromiumoxide（CDP）。核心领域逻辑在 `crates/core`，Tauri 外壳薄壳透传，静态 `www/` 前端无构建步骤。
+Tauri 2（Web 前端 + Rust 后端）+ chromiumoxide（CDP）。核心领域逻辑在 `crates/core`，Tauri 外壳薄壳透传。前端 Vue 3 + TypeScript + Naive UI + Fluent Design tokens，Vite 构建，产物输出到 `src-tauri/www/`。视觉语言与 Hybrid 主题策略详见 [ADR-0009](./docs/adr/0009-fluent-design-hybrid-theme.md)。
+
+## 调试
+
+### 前端
+
+`cargo tauri dev` 启动后 DevTools 可打开（Tauri 支持）。`console.log` 输出到启动终端。UI 改动即时热重载，无需重启。前端源码在 `ui/src/`。
+
+### 后端
+
+```bash
+cargo tauri dev -- --debug   # 或直接用 rust-gdb / lldb
+```
+
+日志输出到 stderr，`cargo tauri dev` 终端可见。Webkit 警告（`libEGL warning` 等）在 WSL2 无 GPU 环境下正常，可忽略。
 
 ## License
 
