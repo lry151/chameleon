@@ -102,7 +102,7 @@ fn read_apps_use_light_theme() -> Option<bool> {
         RegOpenKeyExW(
             HKEY_CURRENT_USER,
             sub_key,
-            0,
+            Some(0),
             KEY_READ,
             &mut key,
         )
