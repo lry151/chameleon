@@ -161,8 +161,7 @@ function openLink(url: string) {
 }
 
 .system-box--ungrouped {
-  border-style: dashed;
-  background: transparent;
+  background: rgba(128, 128, 128, 0.04);
 }
 
 .sys-head {
@@ -181,7 +180,7 @@ function openLink(url: string) {
 
 .sys-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -195,7 +194,7 @@ function openLink(url: string) {
 .sys-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .sys-link-chip {

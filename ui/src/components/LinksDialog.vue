@@ -3,7 +3,7 @@
     :show="show"
     preset="card"
     title="管理预设"
-    :style="{ width: '520px' }"
+    :style="{ width: '600px' }"
     :mask-closable="true"
     @update:show="onUpdateShow"
   >
@@ -12,6 +12,16 @@
       label-placement="top"
       class="links-form"
     >
+      <!-- 名称 -->
+      <n-form-item label="名称">
+        <n-input
+          v-model:value="formState.name"
+          type="text"
+          placeholder="给这个预设取个名字（如：测试环境-管理后台）"
+          clearable
+        />
+      </n-form-item>
+
       <!-- URL 字段 -->
       <n-form-item label="URL">
         <n-input
@@ -88,9 +98,14 @@
         :key="link.name"
         class="preset-row"
       >
-        <span class="preset-url" :title="link.url">
-          {{ link.name || link.url }}
-        </span>
+        <div class="preset-text">
+          <span class="preset-name" :title="link.name || link.url">
+            {{ link.name || '未命名' }}
+          </span>
+          <span class="preset-url" :title="link.url">
+            {{ link.url }}
+          </span>
+        </div>
         <n-checkbox
           :checked="link.auto_open"
           disabled
@@ -128,6 +143,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useMessage } from "naive-ui";
 import type { QuickLink, QuickLinkLogin } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
@@ -141,11 +157,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:show", value: boolean): void;
 }>();
+const message = useMessage();
 
 const isRole = computed(() => props.ownerKind === "role");
 
 /// 表单状态。
 interface FormState {
+  name: string;
   url: string;
   autoOpen: boolean;
   hasLogin: boolean;
@@ -154,6 +172,7 @@ interface FormState {
 }
 
 const formState = ref<FormState>({
+  name: "",
   url: "",
   autoOpen: false,
   hasLogin: false,
@@ -197,6 +216,7 @@ watch(
 
 function resetForm() {
   formState.value = {
+    name: "",
     url: "",
     autoOpen: false,
     hasLogin: false,
@@ -212,16 +232,17 @@ function onUpdateShow(value: boolean) {
 }
 
 function startEdit(link: QuickLink) {
+  formState.value.name = link.name || '';
   formState.value.url = link.url;
   formState.value.autoOpen = link.auto_open;
   if (link.login) {
     formState.value.hasLogin = true;
     formState.value.username = link.login.username;
-    formState.value.usernameSelector = link.login.username_selector ?? "";
+    formState.value.usernameSelector = link.login.username_selector ?? '';
   } else {
     formState.value.hasLogin = false;
-    formState.value.username = "";
-    formState.value.usernameSelector = "";
+    formState.value.username = '';
+    formState.value.usernameSelector = '';
   }
   editingName.value = link.name;
 }
@@ -240,7 +261,7 @@ function buildLogin(): QuickLinkLogin | null {
 async function handleSubmit() {
   const url = formState.value.url.trim();
   if (!url) return;
-  const name = url;
+  const name = formState.value.name.trim() || url;
   const autoOpen = formState.value.autoOpen;
   const login = buildLogin();
 
@@ -284,9 +305,9 @@ async function handleSubmit() {
       }
     }
     await loadAppState();
-    resetForm();
+    message.success("预设已保存");
   } catch (err) {
-    console.error("Failed to save quick link:", err);
+    message.error("保存预设失败，请稍后重试");
   } finally {
     submitting.value = false;
   }
@@ -305,7 +326,7 @@ async function doRemove(name: string) {
       resetForm();
     }
   } catch (err) {
-    console.error("Failed to remove quick link:", err);
+    message.error("删除预设失败");
   }
 }
 
@@ -354,7 +375,7 @@ async function handleTestLogin() {
     editingName.value = name;
     await tauri.openQuickLink(props.ownerId, name);
   } catch (err) {
-    console.error("Failed to test login:", err);
+    message.error("测试登录失败，请检查选择器是否正确");
   } finally {
     testingLogin.value = false;
   }
@@ -376,31 +397,45 @@ async function handleTestLogin() {
 .form-submit {
   display: flex;
   justify-content: flex-end;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .preset-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .preset-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 4px;
+  padding: 6px 8px;
   border-radius: 4px;
 }
 .preset-row:hover {
-  background: rgba(128, 128, 128, 0.08);
+  background: rgba(128, 128, 128, 0.12);
 }
 
-.preset-url {
+.preset-text {
   flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.preset-name {
+  font-size: 14px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+}
+.preset-url {
+  font-size: 12px;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

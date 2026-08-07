@@ -27,8 +27,6 @@ function startSystemWatcher(): void {
 export function useTheme() {
   onMounted(() => {
     startSystemWatcher();
-    // 启动时立即同步一次 body 背景。
-    applyBodyBackground(isDark.value);
   });
   onUnmounted(() => {
     mqCleanup?.();
@@ -47,9 +45,11 @@ export function useTheme() {
 
   // 外壳背景策略：深色让 Mica 透出 + Topbar 轻微暗 tint；浅色全实色。
   // panel_opacity 控制深色 tint 强度（0.5–1.0）。
+  // dark 变化时同步 body 文字/背景色，否则切换到深色后自定义文本(顶栏/窗口控制)仍是浅色主题的深字，在深底上不可见。
   watch(
     () => ({ dark: isDark.value, opacity: prefs.value.panel_opacity }),
     ({ dark, opacity }) => {
+      applyBodyBackground(dark);
       const root = document.documentElement.style;
       if (dark) {
         root.setProperty(

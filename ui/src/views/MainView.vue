@@ -105,18 +105,20 @@ function onHandoff(role: RoleView) {
 .main-loading {
   display: flex;
   justify-content: center;
-  padding: 48px 0;
+  padding: 32px 0;
 }
 
 .main-empty {
   display: flex;
   justify-content: center;
-  padding: 64px 0;
+  padding: 48px 0;
 }
 
 .system-list {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 </style>

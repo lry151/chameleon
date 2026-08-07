@@ -1,11 +1,11 @@
 <template>
-  <n-card class="role-card" :class="{ 'role-card--running': role.running }">
+  <n-card class="role-card" :class="{ 'role-card--running': role.running }" :style="runningCardStyle">
     <!-- 头部：标识 + 状态 -->
     <template #header>
       <div class="role-header">
         <span
           class="role-swatch"
-          :style="{ backgroundColor: role.color }"
+          :style="{ backgroundColor: role.color, transform: `scale(${swatchScale})` }"
           aria-hidden="true"
         />
         <span class="role-name" :title="role.name">{{ role.name }}</span>
@@ -14,7 +14,7 @@
           :bordered="false"
           size="small"
           round
-          :style="{ backgroundColor: role.color, color: '#fff' }"
+          :style="{ backgroundColor: role.color, color: tagTextColor }"
         >
           运行中
         </n-tag>
@@ -108,8 +108,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useMessage } from "naive-ui";
 import type { RoleView } from "../types/api";
 import { tauri } from "../composables/useTauri";
+import { createSpring } from "../utils/spring";
 import { loadAppState } from "../composables/useAppState";
 
 const props = defineProps<{
@@ -126,6 +128,50 @@ const emit = defineEmits<{
 
 const busy = ref(false);
 const showDeletePop = ref(false);
+const swatchScale = ref(1);
+const message = useMessage();
+
+/// 「运行中」标签文字颜色：按角色颜色亮度选深/浅，保证在浅色(如黄 #f1c40f)棋盘上可读。
+const tagTextColor = computed(() => readableOn(props.role.color));
+/// 运行中角色卡片：左侧色条强化色块身份。
+const runningCardStyle = computed(() =>
+  props.role.running ? { borderLeft: `2px solid ${props.role.color}` } : {},
+);
+/// 返回在给定 hex 背景上可读的近似文字色（黑或白）。
+function readableOn(hex: string): string {
+  const c = hex.replace("#", "");
+  if (c.length !== 6) return "#fff";
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  // 感知亮度（Rec.709 luma），阈值 0.6。
+  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luma > 0.6 ? "#1A1A1A" : "#fff";
+}
+
+/// 启动/关闭后触发脉冲动画
+function triggerPulse() {
+  const spring = createSpring({
+    from: 1,
+    to: 1,
+    stiffness: 400,
+    damping: 15,
+  });
+  // 先放大再弹回
+  let phase = 0;
+  spring.onUpdate = (value) => {
+    if (phase === 0) {
+      swatchScale.value = 1 + value * 0.3;
+      if (value > 0.5) phase = 1;
+    } else {
+      swatchScale.value = 1.3 - (value - 0.5) * 0.6;
+    }
+  };
+  spring.onDone = () => {
+    swatchScale.value = 1;
+  };
+  spring.start();
+}
 
 const menuOptions = computed(() => [
   { label: "编辑", key: "edit" },
@@ -138,7 +184,9 @@ async function handleLaunch() {
   busy.value = true;
   try {
     await tauri.launchRole(props.role.id);
-    await loadAppState();
+    triggerPulse();
+  } catch (err) {
+    message.error(`启动「${props.role.name}」失败，请检查浏览器路径`);
   } finally {
     busy.value = false;
   }
@@ -148,7 +196,9 @@ async function handleClose() {
   busy.value = true;
   try {
     await tauri.closeRole(props.role.id);
-    await loadAppState();
+    triggerPulse();
+  } catch (err) {
+    message.error(`关闭「${props.role.name}」失败，请稍后重试`);
   } finally {
     busy.value = false;
   }
@@ -167,6 +217,8 @@ async function doDelete() {
     await tauri.deleteRole(props.role.id);
     await loadAppState();
     emit("deleted");
+  } catch (err) {
+    message.error(`删除角色「${props.role.name}」失败`);
   } finally {
     busy.value = false;
   }
@@ -189,7 +241,7 @@ function openLink(url: string) {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  flex-shrink: 0;
+  transform-origin: center;
 }
 
 .role-name {
@@ -212,7 +264,7 @@ function openLink(url: string) {
 .role-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   min-height: 24px;
 }
 
@@ -230,6 +282,5 @@ function openLink(url: string) {
 .role-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
 }
 </style>

@@ -3,7 +3,7 @@
     :show="show"
     preset="card"
     :title="editing ? '编辑系统' : '新建系统'"
-    :style="{ width: '420px' }"
+    :style="{ width: '480px' }"
     :mask-closable="true"
     @update:show="onUpdateShow"
   >
@@ -42,6 +42,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useMessage } from "naive-ui";
 import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
 
@@ -57,6 +58,8 @@ const emit = defineEmits<{
   (e: "saved"): void;
   (e: "manageLinks", systemId: string): void;
 }>();
+const message = useMessage();
+
 
 const editing = computed(() => props.systemId !== null);
 const name = ref("");
@@ -95,11 +98,11 @@ async function handleSave() {
       await tauri.createSystem(trimmed);
     }
     await loadAppState();
+    message.success("系统已保存");
     emit("saved");
     emit("update:show", false);
   } catch (err) {
-    console.error("Failed to save system:", err);
-  } finally {
+    message.error("保存系统失败，请稍后重试");
     saving.value = false;
   }
 }

@@ -3,7 +3,7 @@
     :show="show"
     preset="card"
     title="接力"
-    :style="{ width: '420px' }"
+    :style="{ width: '480px' }"
     :mask-closable="true"
     @update:show="onUpdateShow"
   >
@@ -34,9 +34,15 @@
       <!-- Step 3: 选择模式 -->
       <n-form-item label="接力模式">
         <n-radio-group v-model:value="mode">
-          <n-space :size="16">
-            <n-radio value="parallel">并行模式</n-radio>
-            <n-radio value="relay">接力模式</n-radio>
+          <n-space vertical :size="12">
+            <n-space :size="12" align="center">
+              <n-radio value="parallel">并行模式</n-radio>
+              <n-text class="mode-hint" depth="3">两窗口同时打开，可对比查看</n-text>
+            </n-space>
+            <n-space :size="12" align="center">
+              <n-radio value="relay">接力模式</n-radio>
+              <n-text class="mode-hint" depth="3">URL 传给目标角色，源窗口关闭</n-text>
+            </n-space>
           </n-space>
         </n-radio-group>
       </n-form-item>
@@ -59,6 +65,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useMessage } from "naive-ui";
 import type { HandoffMode, RoleView } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
@@ -76,6 +83,8 @@ const emit = defineEmits<{
 const targetId = ref<string | null>(null);
 const mode = ref<HandoffMode>("parallel");
 const submitting = ref(false);
+const message = useMessage();
+
 
 const targetOptions = computed(() =>
   appState.value.roles
@@ -105,11 +114,12 @@ async function handleSubmit() {
   try {
     await tauri.handoff(props.source.id, targetId.value, mode.value);
     await loadAppState();
+    const targetRole = appState.value.roles.find((r) => r.id === targetId.value);
+    message.success(`接力完成，已打开「${targetRole?.name ?? ""}」`);
     emit("done");
     emit("update:show", false);
-  } catch (err) {
-    console.error("Handoff failed:", err);
-  } finally {
+  } catch (err: any) {
+    message.error(`接力失败：${err?.message ?? err}`);
     submitting.value = false;
   }
 }
@@ -137,5 +147,10 @@ async function handleSubmit() {
 .form-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+.mode-hint {
+  font-size: 12px;
 }
 </style>

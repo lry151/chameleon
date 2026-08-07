@@ -3,7 +3,7 @@
     :show="show"
     preset="card"
     :title="dialogTitle"
-    :style="{ width: '460px' }"
+    :style="{ width: '480px' }"
     :mask-closable="true"
     @update:show="onUpdateShow"
   >
@@ -64,6 +64,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useMessage } from "naive-ui";
 import type { Role, RoleView } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
@@ -81,6 +82,8 @@ const emit = defineEmits<{
   (e: "saved"): void;
   (e: "manageLinks", roleId: string): void;
 }>();
+const message = useMessage();
+
 
 const COLOR_PALETTE: string[] = [
   "#e74c3c",
@@ -165,11 +168,11 @@ async function handleSave() {
       }
     }
     await loadAppState();
+    message.success("角色已保存");
     emit("saved");
     emit("update:show", false);
   } catch (err) {
-    console.error("Failed to save role:", err);
-  } finally {
+    message.error("保存角色失败，请稍后重试");
     saving.value = false;
   }
 }

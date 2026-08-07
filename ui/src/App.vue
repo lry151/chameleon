@@ -137,6 +137,67 @@ body,
 body {
   overflow: hidden;
 }
+
+/* View Transitions — 对话框弹跳入场 */
+@keyframes dialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes dialogOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Dropdown 菜单项错开入场 */
+.n-dropdown-menu {
+  animation: dropdownIn 0.2s ease-out;
+}
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.n-dropdown-option-body {
+  animation: dropdownItemIn 0.25s ease-out backwards;
+}
+.n-dropdown-option-body:nth-child(1) { animation-delay: 0.02s; }
+.n-dropdown-option-body:nth-child(2) { animation-delay: 0.04s; }
+.n-dropdown-option-body:nth-child(3) { animation-delay: 0.06s; }
+.n-dropdown-option-body:nth-child(4) { animation-delay: 0.08s; }
+.n-dropdown-option-body:nth-child(5) { animation-delay: 0.10s; }
+.n-dropdown-option-body:nth-child(6) { animation-delay: 0.12s; }
+.n-dropdown-option-body:nth-child(7) { animation-delay: 0.14s; }
+.n-dropdown-option-body:nth-child(8) { animation-delay: 0.16s; }
+.n-dropdown-option-body:nth-child(9) { animation-delay: 0.18s; }
+.n-dropdown-option-body:nth-child(10) { animation-delay: 0.20s; }
+@keyframes dropdownItemIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
 </style>
 
 <style scoped>

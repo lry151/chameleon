@@ -4,7 +4,7 @@
     <div class="topbar-brand">
       <span class="topbar-logo" aria-hidden="true">🦎</span>
       <div class="topbar-title">
-        <span class="topbar-name">chameleon</span>
+        <span class="topbar-name" :style="{ color: logoColor }">chameleon</span>
         <span class="topbar-subtitle">Chrome 会话隔离管理</span>
       </div>
     </div>
@@ -19,62 +19,18 @@
       </n-button>
     </n-space>
 
-    <!-- 批量区 -->
-    <n-space :size="8" class="topbar-group">
-      <n-button
-        size="medium"
-        :loading="busyLaunchAll"
-        @mousedown.stop="handleLaunchAll"
-      >
-        启动所有
-      </n-button>
-      <n-button
-        size="medium"
-        :loading="busyCloseAll"
-        @mousedown.stop="handleCloseAll"
-      >
-        关闭所有
-      </n-button>
-      <n-button size="medium" @mousedown.stop="showSandboxes = true">
-        沙箱
-      </n-button>
-      <n-button size="medium" @mousedown.stop="showSnapshots = true">
-        快照
-      </n-button>
-      <n-popconfirm
-        :show="showCleanupPop"
-        positive-text="清理"
-        negative-text="取消"
-        @positive-click="handleCleanup"
-        @negative-click="showCleanupPop = false"
-        @click-outside="showCleanupPop = false"
-      >
-        <template #trigger>
-          <n-button size="medium" @mousedown.stop="showCleanupPop = true">
-            清理
-          </n-button>
-        </template>
-        确定清理全部临时数据？
-      </n-popconfirm>
-    </n-space>
-
-    <!-- 工具区 -->
-    <n-space :size="8" class="topbar-group topbar-tools">
-      <n-button size="medium" @mousedown.stop="handleExport">导出</n-button>
-      <n-button size="medium" @mousedown.stop="handleImport">导入</n-button>
-      <n-button
-        quaternary
-        circle
-        size="medium"
-        @mousedown.stop
-        @click="$emit('openSettings')"
-        aria-label="设置"
-      >
+    <!-- 更多操作 -->
+    <n-dropdown
+      trigger="click"
+      :options="moreOptions"
+      @select="handleMoreSelect"
+    >
+      <n-button quaternary size="medium" aria-label="更多操作">
         <template #icon>
-          <span aria-hidden="true">⚙</span>
+          <span aria-hidden="true">⋮</span>
         </template>
       </n-button>
-    </n-space>
+    </n-dropdown>
 
     <!-- 弹簧占位：把窗口控制推到最右 -->
     <span class="topbar-spacer" />
@@ -110,14 +66,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { useMessage, useDialog } from "naive-ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { tauri } from "../composables/useTauri";
 import { loadAppState } from "../composables/useAppState";
+import { prefs } from "../composables/usePrefs";
 import SandboxesPanel from "./SandboxesPanel.vue";
 import SnapshotsPanel from "./SnapshotsPanel.vue";
 
-defineEmits<{
+const emit = defineEmits<{
   (e: "openSettings"): void;
   (e: "newRole"): void;
   (e: "newSystem"): void;
@@ -125,9 +83,13 @@ defineEmits<{
 
 const showSandboxes = ref(false);
 const showSnapshots = ref(false);
-const showCleanupPop = ref(false);
 const busyLaunchAll = ref(false);
 const busyCloseAll = ref(false);
+const message = useMessage();
+const dialog = useDialog();
+
+/// 顶栏 Logo 色：跟随用户 accent，强化变色龙品牌。
+const logoColor = computed(() => prefs.value.accent_color);
 
 function onDrag(e: MouseEvent) {
   if (e.button !== 0) return;
@@ -149,8 +111,9 @@ async function handleLaunchAll() {
   try {
     await tauri.launchAll();
     await loadAppState();
+    message.success("角色已全部启动");
   } catch (err) {
-    console.error("Failed to launch all:", err);
+    message.error("启动角色失败，请检查浏览器路径是否正确");
   } finally {
     busyLaunchAll.value = false;
   }
@@ -161,28 +124,29 @@ async function handleCloseAll() {
   try {
     await tauri.closeAll();
     await loadAppState();
+    message.success("角色已全部关闭");
   } catch (err) {
-    console.error("Failed to close all:", err);
+    message.error("关闭角色失败，请稍后重试");
   } finally {
     busyCloseAll.value = false;
   }
 }
 
 async function handleCleanup() {
-  showCleanupPop.value = false;
   try {
     await tauri.cleanupTemp();
     await loadAppState();
   } catch (err) {
-    console.error("Failed to cleanup:", err);
+    message.error("清理临时数据失败");
   }
 }
 
 async function handleExport() {
   try {
     await tauri.exportConfig();
+    message.success("配置已导出");
   } catch (err) {
-    console.error("Failed to export:", err);
+    message.error("导出配置失败，请检查写入权限");
   }
 }
 
@@ -190,8 +154,71 @@ async function handleImport() {
   try {
     await tauri.importConfig();
     await loadAppState();
-  } catch (err) {
-    console.error("Failed to import:", err);
+    message.success("配置已导入");
+  } catch (err: any) {
+    message.error(`导入配置失败：${err?.message ?? err}`);
+  }
+}
+
+const moreOptions = [
+  { label: "启动所有", key: "launchAll" },
+  { label: "关闭所有", key: "closeAll" },
+  { type: "divider" as const, key: "d1" },
+  { label: "沙箱", key: "sandbox" },
+  { label: "快照", key: "snapshot" },
+  { type: "divider" as const, key: "d2" },
+  { label: "清理临时数据", key: "cleanup" },
+  { type: "divider" as const, key: "d3" },
+  { label: "导出配置", key: "export" },
+  { label: "导入配置", key: "import" },
+  { type: "divider" as const, key: "d4" },
+  { label: "设置", key: "settings" },
+];
+
+function handleMoreSelect(key: string) {
+  switch (key) {
+    case "launchAll":
+      handleLaunchAll();
+      break;
+    case "closeAll":
+      dialog.warning({
+        title: "确认关闭",
+        content: "确定关闭全部运行中的角色窗口？",
+        positiveText: "关闭全部",
+        negativeText: "取消",
+        onPositiveClick: handleCloseAll,
+      });
+      break;
+    case "sandbox":
+      showSandboxes.value = true;
+      break;
+    case "snapshot":
+      showSnapshots.value = true;
+      break;
+    case "cleanup":
+      dialog.warning({
+        title: "确认清理",
+        content: "确定清理全部临时数据？",
+        positiveText: "清理",
+        negativeText: "取消",
+        onPositiveClick: handleCleanup,
+      });
+      break;
+    case "export":
+      handleExport();
+      break;
+    case "import":
+      dialog.warning({
+        title: "确认导入",
+        content: "导入将合并外部配置到现有数据，冲突项会被拒绝。确认导入？",
+        positiveText: "导入",
+        negativeText: "取消",
+        onPositiveClick: handleImport,
+      });
+      break;
+    case "settings":
+      emit("openSettings");
+      break;
   }
 }
 </script>
@@ -200,20 +227,17 @@ async function handleImport() {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 8px 12px;
   background: var(--topbar-bg);
   user-select: none;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
 }
 
 .topbar-brand {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-right: 8px;
-  border-right: 1px solid rgba(128, 128, 128, 0.2);
-  margin-right: 4px;
 }
 
 .topbar-logo {
@@ -224,7 +248,7 @@ async function handleImport() {
 .topbar-title {
   display: flex;
   flex-direction: column;
-  line-height: 1.1;
+  line-height: 1.4;
 }
 
 .topbar-name {
@@ -242,10 +266,6 @@ async function handleImport() {
   flex-shrink: 0;
 }
 
-.topbar-tools {
-  margin-left: 4px;
-}
-
 .topbar-spacer {
   flex: 1 1 auto;
 }
@@ -253,7 +273,7 @@ async function handleImport() {
 .topbar-window-controls {
   display: flex;
   flex-shrink: 0;
-  margin-left: 4px;
+  margin-left: 12px;
 }
 
 .topbar-ctrl {
@@ -266,10 +286,13 @@ async function handleImport() {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .topbar-ctrl:hover {
   background: rgba(128, 128, 128, 0.2);
+}
+.topbar-ctrl:active {
+  transform: scale(0.85);
 }
 .topbar-ctrl-close:hover {
   background: #e81123;

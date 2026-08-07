@@ -5,14 +5,14 @@
     preset="card"
     title="设置"
     :bordered="false"
-    :style="{ maxWidth: '420px' }"
+    :style="{ maxWidth: '480px' }"
     @update:show="onUpdateShow"
     @after-leave="onAfterLeave"
   >
     <div class="settings-body">
       <!-- 段 1：主题 -->
       <div class="settings-section">
-        <n-text class="settings-label" depth="1">主题</n-text>
+        <n-text class="settings-label">主题</n-text>
         <n-radio-group :value="draft.theme" @update:value="setTheme">
           <n-space :size="12">
             <n-radio value="Dark">深色</n-radio>
@@ -24,7 +24,7 @@
 
       <!-- 段 2：透明度 -->
       <div class="settings-section">
-        <n-text class="settings-label" depth="1">面板透明度</n-text>
+        <n-text class="settings-label">面板透明度</n-text>
         <div class="settings-row">
           <n-slider
             :value="draft.panel_opacity"
@@ -40,7 +40,7 @@
 
       <!-- 段 3：Accent 颜色 -->
       <div class="settings-section">
-        <n-text class="settings-label" depth="1">主题色</n-text>
+        <n-text class="settings-label">主题色</n-text>
         <n-space :size="12">
           <button
             v-for="c in accentPalette"
@@ -138,7 +138,7 @@ async function onAfterLeave() {
 
 .settings-label {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .settings-row {

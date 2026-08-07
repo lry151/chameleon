@@ -85,6 +85,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useMessage } from "naive-ui";
 import { appState, loadAppState } from "../composables/useAppState";
 import { tauri } from "../composables/useTauri";
 defineProps<{
@@ -100,6 +101,7 @@ const newName = ref("");
 const saving = ref(false);
 const restoreTarget = ref<string | null>(null);
 const deleteTarget = ref<string | null>(null);
+const message = useMessage();
 
 function onUpdateShow(value: boolean) {
   emit("update:show", value);
@@ -111,10 +113,11 @@ async function handleSave() {
   saving.value = true;
   try {
     await tauri.saveSnapshot(name);
+    message.success("快照已保存");
     newName.value = "";
     await loadAppState();
   } catch (err) {
-    console.error("Failed to save snapshot:", err);
+    message.error("保存快照失败");
   } finally {
     saving.value = false;
   }
@@ -126,7 +129,7 @@ async function handleRestore(name: string) {
     await tauri.restoreSnapshot(name);
     await loadAppState();
   } catch (err) {
-    console.error("Failed to restore snapshot:", err);
+    message.error("恢复快照失败");
   }
 }
 
@@ -136,7 +139,7 @@ async function handleDelete(name: string) {
     await tauri.deleteSnapshot(name);
     await loadAppState();
   } catch (err) {
-    console.error("Failed to delete snapshot:", err);
+    message.error("删除快照失败");
   }
 }
 </script>
@@ -166,22 +169,23 @@ async function handleDelete(name: string) {
 .snapshots-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .snapshot-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 4px;
+  padding: 6px 8px;
   border-radius: 4px;
 }
 .snapshot-row:hover {
-  background: rgba(128, 128, 128, 0.08);
+  background: rgba(128, 128, 128, 0.12);
 }
 
 .snapshot-name {
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

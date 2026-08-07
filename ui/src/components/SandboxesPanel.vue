@@ -63,6 +63,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useMessage } from "naive-ui";
 import { appState, loadAppState } from "../composables/useAppState";
 import { tauri } from "../composables/useTauri";
 defineProps<{
@@ -77,6 +78,7 @@ const sandboxes = computed(() => appState.value.sandboxes);
 const launching = ref(false);
 const closingId = ref<string | null>(null);
 const showCleanupPop = ref(false);
+const message = useMessage();
 
 function onUpdateShow(value: boolean) {
   emit("update:show", value);
@@ -92,7 +94,7 @@ async function handleLaunch() {
     await tauri.launchSandbox();
     await loadAppState();
   } catch (err) {
-    console.error("Failed to launch sandbox:", err);
+    message.error("启动沙箱失败");
   } finally {
     launching.value = false;
   }
@@ -104,7 +106,7 @@ async function handleClose(id: string) {
     await tauri.closeSandbox(id);
     await loadAppState();
   } catch (err) {
-    console.error("Failed to close sandbox:", err);
+    message.error("关闭沙箱失败");
   } finally {
     closingId.value = null;
   }
@@ -116,7 +118,7 @@ async function handleCleanup() {
     await tauri.cleanupTemp();
     await loadAppState();
   } catch (err) {
-    console.error("Failed to cleanup:", err);
+    message.error("清理沙箱数据失败");
   }
 }
 </script>
@@ -141,23 +143,24 @@ async function handleCleanup() {
 .sandboxes-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .sandbox-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 4px;
+  padding: 6px 8px;
   border-radius: 4px;
 }
 .sandbox-row:hover {
-  background: rgba(128, 128, 128, 0.08);
+  background: rgba(128, 128, 128, 0.12);
 }
 
 .sandbox-id {
   font-family: monospace;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
