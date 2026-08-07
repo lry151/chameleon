@@ -25,7 +25,7 @@
       :options="moreOptions"
       @select="handleMoreSelect"
     >
-      <n-button quaternary size="medium" aria-label="更多操作">
+      <n-button quaternary size="medium" aria-label="更多操作" @mousedown.stop>
         <template #icon>
           <span aria-hidden="true">⋮</span>
         </template>
