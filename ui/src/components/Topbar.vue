@@ -42,19 +42,32 @@
         aria-label="最小化"
         @mousedown.stop
         @click="minimize"
-      >─</button>
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1" />
+        </svg>
+      </button>
       <button
         class="topbar-ctrl"
         aria-label="最大化"
         @mousedown.stop
         @click="maximize"
-      >□</button>
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
+        </svg>
+      </button>
       <button
         class="topbar-ctrl topbar-ctrl-close"
         aria-label="关闭"
         @mousedown.stop
         @click="hide"
-      >×</button>
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="1.5" y1="1.5" x2="8.5" y2="8.5" stroke="currentColor" stroke-width="1" />
+          <line x1="8.5" y1="1.5" x2="1.5" y2="8.5" stroke="currentColor" stroke-width="1" />
+        </svg>
+      </button>
     </div>
 
     <!-- 沙箱面板 -->
@@ -262,7 +275,6 @@ function handleMoreSelect(key: string) {
   font-size: 11px;
   opacity: 0.65;
 }
-
 .topbar-group {
   flex-shrink: 0;
 }
@@ -278,22 +290,22 @@ function handleMoreSelect(key: string) {
 }
 
 .topbar-ctrl {
-  width: 40px;
-  height: 28px;
+  width: 46px;
+  height: 32px;
   border: none;
   background: transparent;
   color: inherit;
-  font-size: 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  justify-content: center;
+  transition: background-color 0.1s;
 }
 .topbar-ctrl:hover {
-  background: rgba(128, 128, 128, 0.2);
+  background: rgba(255, 255, 255, 0.1);
 }
 .topbar-ctrl:active {
-  transform: scale(0.85);
+  background: rgba(255, 255, 255, 0.05);
 }
 .topbar-ctrl-close:hover {
   background: #e81123;
