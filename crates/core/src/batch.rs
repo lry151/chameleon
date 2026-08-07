@@ -91,6 +91,7 @@ async fn launch_one(
 }
 
 /// 关闭单个角色（在 spawn 任务内调用）。
+/// 并行安全：仅对 Session/cfg 短暂持锁提取数据，慢速 CDP 工作在无锁状态下执行。
 async fn close_one(
     session: Arc<tokio::sync::Mutex<Session>>,
     store: ConfigStore,
@@ -98,10 +99,32 @@ async fn close_one(
     id: String,
 ) -> BatchResult {
     let mut out = BatchResult::default();
-    let mut s = session.lock().await;
-    let mut c = cfg.lock().await;
-    match launcher::close_role(&mut s, &store, &mut c, &id).await {
-        Ok(()) => out.push_ok(),
+
+    // 1. 短暂持锁：从 Session 取出 RunningRole，从 cfg 读取 CDP 端口
+    let (run, port) = {
+        let mut s = session.lock().await;
+        let run = match s.roles.remove(&id) {
+            Some(r) => r,
+            None => return out, // 已不在 session 中（外部已关闭），不算失败
+        };
+        let c = cfg.lock().await;
+        let port = c.roles.iter().find(|r| r.id == id).map(|r| r.cdp_port);
+        (run, port)
+    };
+
+    // 2. 无锁执行慢速 CDP 工作
+    match launcher::close_role_no_session(run.browser, port).await {
+        Ok(rect) => {
+            // 3. 短暂持锁：保存窗口位置到配置
+            if let Some(rect) = rect {
+                let mut c = cfg.lock().await;
+                if let Some(slot) = c.roles.iter_mut().find(|r| r.id == id) {
+                    slot.window_rect = Some(rect);
+                }
+                let _ = store.save(&c);
+            }
+            out.push_ok();
+        }
         Err(e) => out.push_error(e),
     }
     out

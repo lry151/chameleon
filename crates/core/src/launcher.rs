@@ -212,6 +212,26 @@ pub async fn close_role(
     Ok(())
 }
 
+/// 优雅关闭角色（不含 Session 操作，并行关闭用）。
+/// 调用方负责从 Session 中取出 RunningRole，本函数执行慢速 CDP 工作并返回窗口位置。
+pub async fn close_role_no_session(
+    mut browser: Browser,
+    port: Option<u16>,
+) -> Result<Option<crate::model::WindowRect>> {
+    let rect = window::capture_bounds(&browser).await.ok();
+    let _ = tokio::time::timeout(Duration::from_secs(5), browser.close()).await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), browser.wait()).await;
+    if let Some(port) = port {
+        for _ in 0..20 {
+            if !port_open(port) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    Ok(rect)
+}
+
 /// 在角色窗口新标签页打开 URL 并聚焦（未启动先拉起）。
 pub async fn open_tab(session: &mut Session, cfg: &GlobalConfig, role_id: &str, url: &str) -> Result<()> {
     let role = cfg
