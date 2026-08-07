@@ -51,3 +51,7 @@ _Avoid_: 批量命令、全关
 **UI 偏好 (UiPreferences)**:
 用户界面设置：主题模式（深色/浅色/跟随系统）+ 面板透明度（0.5-1.0）+ Accent 颜色。持久化到 config.json 的 ui_preferences 字段，跨重启保留。随配置导出/导入同行。
 _Avoid_: 外观设置、主题配置、个性化
+
+**Hybrid 主题 (Hybrid Theme)**:
+chameleon 的主题材质策略：深色模式 = Windows 原生 Mica (Win11) / Acrylic (Win10) 半透背景 + 半透面板；浅色模式 = 完全关闭 vibrancy，由前端实色浅色背景（#F3F3F3）+ 实色面板填充。参考 Windows 11 自家设置应用的做法。Rust 端 `set_ui_preferences` 在主题切换时同步调用 `clear_vibrancy` + 重新应用 Mica/Acrylic。
+_Avoid_: 全程云母、全程实色、自适应 Mica
