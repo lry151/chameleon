@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppStateView,
   BatchResult,
+  QuickLinkLogin,
   Role,
   System,
   UiPreferences,
@@ -44,6 +45,71 @@ export const tauri = {
     invoke<BatchResult>("launch_system", { systemId }),
   closeSystem: (systemId: string) =>
     invoke<BatchResult>("close_system", { systemId }),
+  // —— 常用 URL 预设（角色级） ——
+  addQuickLink: (
+    roleId: string,
+    name: string,
+    url: string,
+    autoOpen: boolean,
+    login: QuickLinkLogin | null,
+  ) =>
+    invoke<void>("add_quick_link", {
+      roleId,
+      name,
+      url,
+      autoOpen,
+      login,
+    }),
+  editQuickLink: (
+    roleId: string,
+    oldName: string,
+    name: string,
+    url: string,
+    autoOpen: boolean,
+    login: QuickLinkLogin | null,
+  ) =>
+    invoke<void>("edit_quick_link", {
+      roleId,
+      oldName,
+      name,
+      url,
+      autoOpen,
+      login,
+    }),
+  removeQuickLink: (roleId: string, name: string) =>
+    invoke<void>("remove_quick_link", { roleId, name }),
+  openQuickLink: (roleId: string, name: string) =>
+    invoke<string>("open_quick_link", { roleId, name }),
+
+  // —— 常用 URL 预设（系统级） ——
+  addSystemQuickLink: (
+    systemId: string,
+    name: string,
+    url: string,
+    autoOpen: boolean,
+  ) =>
+    invoke<void>("add_system_quick_link", {
+      systemId,
+      name,
+      url,
+      autoOpen,
+    }),
+  editSystemQuickLink: (
+    systemId: string,
+    oldName: string,
+    name: string,
+    url: string,
+    autoOpen: boolean,
+  ) =>
+    invoke<void>("edit_system_quick_link", {
+      systemId,
+      oldName,
+      name,
+      url,
+      autoOpen,
+    }),
+  removeSystemQuickLink: (systemId: string, name: string) =>
+    invoke<void>("remove_system_quick_link", { systemId, name }),
 
   // —— 偏好 ——
   getUiPreferences: () =>
