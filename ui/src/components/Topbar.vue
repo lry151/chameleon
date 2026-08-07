@@ -19,24 +19,46 @@
       </n-button>
     </n-space>
 
-    <!-- 更多操作 -->
-    <n-dropdown
-      trigger="click"
-      :options="moreOptions"
-      @select="handleMoreSelect"
-    >
-      <n-button quaternary size="medium" aria-label="更多操作" @mousedown.stop>
-        <template #icon>
-          <span aria-hidden="true">⋮</span>
-        </template>
-      </n-button>
-    </n-dropdown>
-
     <!-- 弹簧占位：把窗口控制推到最右 -->
     <span class="topbar-spacer" />
 
+
     <!-- 窗口控制 -->
     <div class="topbar-window-controls">
+      <!-- 更多操作 -->
+      <n-dropdown
+        trigger="click"
+        :options="moreOptions"
+        @select="handleMoreSelect"
+      >
+        <button
+          class="topbar-ctrl"
+          aria-label="更多操作"
+          @mousedown.stop
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10">
+            <circle cx="2" cy="5" r="1" fill="currentColor" />
+            <circle cx="5" cy="5" r="1" fill="currentColor" />
+            <circle cx="8" cy="5" r="1" fill="currentColor" />
+          </svg>
+        </button>
+      </n-dropdown>
+
+      <!-- 设置 -->
+      <button
+        class="topbar-ctrl"
+        aria-label="设置"
+        @mousedown.stop
+        @click="$emit('openSettings')"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+
+      <!-- 分隔线 -->
+      <div class="topbar-separator"></div>
       <button
         class="topbar-ctrl"
         aria-label="最小化"
@@ -88,7 +110,7 @@ import { prefs } from "../composables/usePrefs";
 import SandboxesPanel from "./SandboxesPanel.vue";
 import SnapshotsPanel from "./SnapshotsPanel.vue";
 
-const emit = defineEmits<{
+defineEmits<{
   (e: "openSettings"): void;
   (e: "newRole"): void;
   (e: "newSystem"): void;
@@ -184,8 +206,6 @@ const moreOptions = [
   { type: "divider" as const, key: "d3" },
   { label: "导出配置", key: "export" },
   { label: "导入配置", key: "import" },
-  { type: "divider" as const, key: "d4" },
-  { label: "设置", key: "settings" },
 ];
 
 function handleMoreSelect(key: string) {
@@ -228,9 +248,6 @@ function handleMoreSelect(key: string) {
         negativeText: "取消",
         onPositiveClick: handleImport,
       });
-      break;
-    case "settings":
-      emit("openSettings");
       break;
   }
 }
@@ -287,6 +304,14 @@ function handleMoreSelect(key: string) {
   display: flex;
   flex-shrink: 0;
   margin-left: 12px;
+  align-items: center;
+}
+
+.topbar-separator {
+  width: 1px;
+  height: 20px;
+  background: rgba(128, 128, 128, 0.2);
+  margin: 0 4px;
 }
 
 .topbar-ctrl {
