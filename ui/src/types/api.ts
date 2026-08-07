@@ -66,6 +66,9 @@ export interface RoleView extends Role {
   running: boolean;
 }
 
+/// 接力模式（对应 Rust `HandoffMode`，camelCase 序列化）。
+export type HandoffMode = "parallel" | "relay";
+
 /// 系统（与 Rust `System` 对齐）。
 export interface System {
   id: string;

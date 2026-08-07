@@ -11,23 +11,65 @@
 
     <!-- 主操作区 -->
     <n-space :size="8" class="topbar-group">
-      <n-button type="primary" size="medium" @mousedown.stop>新建角色</n-button>
-      <n-button size="medium" @mousedown.stop>新建系统</n-button>
+      <n-button type="primary" size="medium" @mousedown.stop="$emit('newRole')">
+        新建角色
+      </n-button>
+      <n-button size="medium" @mousedown.stop="$emit('newSystem')">
+        新建系统
+      </n-button>
     </n-space>
 
     <!-- 批量区 -->
     <n-space :size="8" class="topbar-group">
-      <n-button size="medium" @mousedown.stop>启动所有</n-button>
-      <n-button size="medium" @mousedown.stop>关闭所有</n-button>
-      <n-button size="medium" @mousedown.stop>沙箱</n-button>
-      <n-button size="medium" @mousedown.stop>清理</n-button>
+      <n-button
+        size="medium"
+        :loading="busyLaunchAll"
+        @mousedown.stop="handleLaunchAll"
+      >
+        启动所有
+      </n-button>
+      <n-button
+        size="medium"
+        :loading="busyCloseAll"
+        @mousedown.stop="handleCloseAll"
+      >
+        关闭所有
+      </n-button>
+      <n-button size="medium" @mousedown.stop="showSandboxes = true">
+        沙箱
+      </n-button>
+      <n-button size="medium" @mousedown.stop="showSnapshots = true">
+        快照
+      </n-button>
+      <n-popconfirm
+        :show="showCleanupPop"
+        positive-text="清理"
+        negative-text="取消"
+        @positive-click="handleCleanup"
+        @negative-click="showCleanupPop = false"
+        @click-outside="showCleanupPop = false"
+      >
+        <template #trigger>
+          <n-button size="medium" @mousedown.stop="showCleanupPop = true">
+            清理
+          </n-button>
+        </template>
+        确定清理全部临时数据？
+      </n-popconfirm>
     </n-space>
 
     <!-- 工具区 -->
     <n-space :size="8" class="topbar-group topbar-tools">
-      <n-button size="medium" @mousedown.stop>导出</n-button>
-      <n-button size="medium" @mousedown.stop>导入</n-button>
-      <n-button quaternary circle size="medium" @mousedown.stop @click="$emit('openSettings')" aria-label="设置">
+      <n-button size="medium" @mousedown.stop="handleExport">导出</n-button>
+      <n-button size="medium" @mousedown.stop="handleImport">导入</n-button>
+      <n-button
+        quaternary
+        circle
+        size="medium"
+        @mousedown.stop
+        @click="$emit('openSettings')"
+        aria-label="设置"
+      >
         <template #icon>
           <span aria-hidden="true">⚙</span>
         </template>
@@ -58,19 +100,36 @@
         @click="hide"
       >×</button>
     </div>
+
+    <!-- 沙箱面板 -->
+    <SandboxesPanel v-model:show="showSandboxes" />
+
+    <!-- 快照面板 -->
+    <SnapshotsPanel v-model:show="showSnapshots" />
   </header>
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { tauri } from "../composables/useTauri";
+import { loadAppState } from "../composables/useAppState";
+import SandboxesPanel from "./SandboxesPanel.vue";
+import SnapshotsPanel from "./SnapshotsPanel.vue";
 
 defineEmits<{
   (e: "openSettings"): void;
+  (e: "newRole"): void;
+  (e: "newSystem"): void;
 }>();
 
+const showSandboxes = ref(false);
+const showSnapshots = ref(false);
+const showCleanupPop = ref(false);
+const busyLaunchAll = ref(false);
+const busyCloseAll = ref(false);
+
 function onDrag(e: MouseEvent) {
-  // 仅左键触发；按钮已通过 @mousedown.stop 阻止冒泡。
   if (e.button !== 0) return;
   getCurrentWindow().startDragging();
 }
@@ -84,6 +143,57 @@ function maximize() {
 function hide() {
   tauri.appHide();
 }
+
+async function handleLaunchAll() {
+  busyLaunchAll.value = true;
+  try {
+    await tauri.launchAll();
+    await loadAppState();
+  } catch (err) {
+    console.error("Failed to launch all:", err);
+  } finally {
+    busyLaunchAll.value = false;
+  }
+}
+
+async function handleCloseAll() {
+  busyCloseAll.value = true;
+  try {
+    await tauri.closeAll();
+    await loadAppState();
+  } catch (err) {
+    console.error("Failed to close all:", err);
+  } finally {
+    busyCloseAll.value = false;
+  }
+}
+
+async function handleCleanup() {
+  showCleanupPop.value = false;
+  try {
+    await tauri.cleanupTemp();
+    await loadAppState();
+  } catch (err) {
+    console.error("Failed to cleanup:", err);
+  }
+}
+
+async function handleExport() {
+  try {
+    await tauri.exportConfig();
+  } catch (err) {
+    console.error("Failed to export:", err);
+  }
+}
+
+async function handleImport() {
+  try {
+    await tauri.importConfig();
+    await loadAppState();
+  } catch (err) {
+    console.error("Failed to import:", err);
+  }
+}
 </script>
 
 <style scoped>
@@ -92,8 +202,6 @@ function hide() {
   align-items: center;
   gap: 16px;
   padding: 8px 12px;
-  /* 深色：轻微暗 tint，避免内容直接贴在 Mica 上难以聚焦；
-     浅色：实色浅色（由 --topbar-bg 控制，随 isDark + panel_opacity 变化）。 */
   background: var(--topbar-bg);
   user-select: none;
   border-bottom: 1px solid rgba(128, 128, 128, 0.15);
