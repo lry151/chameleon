@@ -140,6 +140,7 @@ import { useMessage } from "naive-ui";
 import type { QuickLink, RoleView } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { createSpring } from "../utils/spring";
+import { notifyBackendError } from "../composables/useErrorToast";
 import { loadAppState } from "../composables/useAppState";
 
 const props = defineProps<{
@@ -234,8 +235,8 @@ async function handleLaunch() {
     await tauri.launchRole(props.role.id);
     triggerPulse();
     await loadAppState();
-  } catch (err) {
-    message.error(`启动「${props.role.name}」失败，请检查浏览器路径`);
+  } catch (err: unknown) {
+    notifyBackendError(message, err, `启动「${props.role.name}」失败`);
   } finally {
     busy.value = false;
   }

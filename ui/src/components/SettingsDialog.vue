@@ -68,6 +68,10 @@
           />
           <n-button @click="handlePickBrowser">选择文件</n-button>
         </div>
+        <!-- 完整路径（n-select 长路径会省略，这里完整展示，便于核对） -->
+        <n-text v-if="browserPath" class="settings-browser-path" depth="3">
+          {{ browserPath }}
+        </n-text>
       </div>
     </div>
   </n-modal>
@@ -208,6 +212,17 @@ async function onAfterLeave() {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-size: 13px;
+}
+
+.settings-browser-select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.settings-browser-path {
+  font-size: 12px;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .accent-dot {

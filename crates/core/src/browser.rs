@@ -58,9 +58,11 @@ pub fn list_browser_candidates(manual_override: Option<&Path>) -> Vec<BrowserCan
             out.push(BrowserCandidate { name: name.into(), path: p.to_string_lossy().to_string() });
         }
     };
+    // 手动指定优先列出，但保留全部自动扫描候选（不掩盖）。detect_browser 仍
+    // 优先用手动路径，这里的顺序只影响下拉列表展示。
     if let Some(p) = manual_override {
         if p.exists() {
-            return vec![BrowserCandidate { name: "手动指定".into(), path: p.to_string_lossy().to_string() }];
+            push(&mut out, &mut seen, "手动指定", p.to_path_buf());
         }
     }
     for (name, p) in registry_app_paths() { push(&mut out, &mut seen, &name, p); }
@@ -77,7 +79,7 @@ pub fn detect_browser(manual_override: Option<&Path>) -> Result<PathBuf> {
             return Ok(p.to_path_buf());
         }
         return Err(ChameleonError::LaunchFailed {
-            detail: format!("指定的浏览器路径不存在：{}", p.display()),
+            detail: format!("指定的浏览器路径不存在：{}。请重新选择浏览器路径。", p.display()),
         });
     }
     let cands = list_browser_candidates(None);
@@ -173,6 +175,33 @@ mod tests {
         // 开发环境至少命中一个，或为空（可接受）
         for c in &cands {
             assert!(std::path::Path::new(&c.path).exists(), "candidate must exist: {}", c.path);
+        }
+    }
+
+    #[test]
+    fn manual_override_keeps_auto_scanned_candidates() {
+        // 手动指定浏览器后，自动扫描到的候选不应从列表中消失（get_state 用
+        // manual_override 调用本函数；当前实现直接 return 只留手动项 → 掩盖自动扫描）。
+        let auto = list_browser_candidates(None);
+        if auto.is_empty() {
+            eprintln!("本机无自动探测候选，跳过");
+            return;
+        }
+        // 用临时文件充当手动指定路径（跨平台，不依赖本机浏览器）。
+        let manual = std::env::temp_dir().join("chameleon-manual-browser-probe");
+        std::fs::write(&manual, b"x").expect("写临时探测文件");
+        let cands = list_browser_candidates(Some(&manual));
+        let _ = std::fs::remove_file(&manual);
+        assert!(
+            cands.iter().any(|c| c.name == "手动指定"),
+            "手动指定项应被列出"
+        );
+        for c in &auto {
+            assert!(
+                cands.iter().any(|x| x.path.eq_ignore_ascii_case(&c.path)),
+                "手动指定后丢失自动扫描候选: {}",
+                c.path
+            );
         }
     }
 }

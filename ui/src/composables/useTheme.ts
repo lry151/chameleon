@@ -40,7 +40,11 @@ export function useTheme() {
   const naiveTheme = computed(() => (isDark.value ? darkTheme : null));
 
   const fluentOverride = computed<GlobalThemeOverrides>(() =>
-    buildFluentThemeOverride(prefs.value.accent_color),
+    buildFluentThemeOverride(
+      prefs.value.accent_color,
+      isDark.value,
+      prefs.value.panel_opacity,
+    ),
   );
 
   // 外壳背景策略：深色让 Mica 透出 + Topbar 轻微暗 tint；浅色全实色。

@@ -106,6 +106,7 @@ import { useMessage, useDialog } from "naive-ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { tauri } from "../composables/useTauri";
 import { loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 import { prefs } from "../composables/usePrefs";
 import SandboxesPanel from "./SandboxesPanel.vue";
 import SnapshotsPanel from "./SnapshotsPanel.vue";
@@ -147,8 +148,8 @@ async function handleLaunchAll() {
     await tauri.launchAll();
     await loadAppState();
     message.success("角色已全部启动");
-  } catch (err) {
-    message.error("启动角色失败，请检查浏览器路径是否正确");
+  } catch (err: unknown) {
+    notifyBackendError(message, err, "启动角色失败");
   } finally {
     busyLaunchAll.value = false;
   }
