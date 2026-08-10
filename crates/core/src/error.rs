@@ -19,6 +19,10 @@ pub enum ChameleonError {
     BrowserNotFound,
     #[error("浏览器启动失败")]
     LaunchFailed { detail: String },
+    #[error("浏览器启动超时（30 秒未开启调试端口）")]
+    BrowserStartTimeout,
+    #[error("浏览器启动后立即退出")]
+    BrowserExitedInstantly,
     #[error("无法连接浏览器调试端口")]
     CdpConnectFailed { detail: String },
     #[error("浏览器操作失败")]
@@ -70,10 +74,16 @@ impl ChameleonError {
                 "未找到 Chrome，请点击『选择 Chrome 路径』手动指定。".into()
             }
             ChameleonError::LaunchFailed { detail } => {
-                format!("启动浏览器失败：{detail}。请检查浏览器路径是否正确。")
+                format!("浏览器启动失败：{detail}")
+            }
+            ChameleonError::BrowserStartTimeout => {
+                "浏览器未能在 30 秒内开启调试端口。\n常见原因：该角色数据目录正被另一个 Chrome 占用、安全软件拦截、或浏览器启动缓慢。\n处理措施：先关闭占用该目录的 Chrome（或点『一键关闭』）后重试；若仍失败，可尝试以非管理员身份运行本工具。".into()
+            }
+            ChameleonError::BrowserExitedInstantly => {
+                "浏览器启动后立即退出。\n常见原因：该角色数据目录正被另一个 Chrome 实例占用——Chrome 单实例会忽略调试端口参数并把请求转交给已运行实例。\n处理措施：关闭占用该目录的 Chrome 后重试，或点『一键关闭』。".into()
             }
             ChameleonError::CdpConnectFailed { detail } => {
-                format!("连接浏览器调试端口失败：{detail}。请尝试重新启动该角色窗口。")
+                format!("连接浏览器调试端口失败：{detail}\n处理措施：请尝试重新启动该角色窗口；若端口被其他进程占用，点『一键关闭』后重试。")
             }
             ChameleonError::CdpOperation { detail } => format!("浏览器操作失败：{detail}"),
             ChameleonError::DefaultDirRefused { dir } => format!(
@@ -142,5 +152,20 @@ mod tests {
             ChameleonError::BrowserNotFound.message(),
             "未找到 Chrome，请点击『选择 Chrome 路径』手动指定。"
         );
+    }
+
+    #[test]
+    fn launch_taxonomy_messages_carry_processing_measures() {
+        // 超时 / 立即退出 两类高发原因必须有「处理措施」并提示「占用」
+        for (label, msg) in [
+            ("timeout", ChameleonError::BrowserStartTimeout.message()),
+            ("exit", ChameleonError::BrowserExitedInstantly.message()),
+        ] {
+            assert!(msg.contains("处理措施"), "{label} 缺少处理措施: {msg}");
+            assert!(msg.contains("占用"), "{label} 未点出数据目录被占用: {msg}");
+        }
+        // CdpConnectFailed 也要带处理措施
+        let cdp = ChameleonError::CdpConnectFailed { detail: "x".into() }.message();
+        assert!(cdp.contains("处理措施"), "CdpConnectFailed 缺少处理措施: {cdp}");
     }
 }

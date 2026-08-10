@@ -56,7 +56,20 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
         .map_err(|e| ChameleonError::SandboxLaunch { detail: e })?;
     let (browser, handler) = Browser::launch(config)
         .await
-        .map_err(|e| ChameleonError::SandboxLaunch { detail: e.to_string() })?;
+        .map_err(|e| match crate::launcher::classify_launch_err(e) {
+            ChameleonError::BrowserStartTimeout => ChameleonError::SandboxLaunch {
+                detail: "浏览器未能在 30 秒内开启调试端口，数据目录可能被占用。".into(),
+            },
+            ChameleonError::BrowserExitedInstantly => ChameleonError::SandboxLaunch {
+                detail: "浏览器启动后立即退出，数据目录可能被另一个 Chrome 占用。".into(),
+            },
+            ChameleonError::LaunchFailed { detail } | ChameleonError::CdpConnectFailed { detail } => {
+                ChameleonError::SandboxLaunch { detail }
+            }
+            _ => ChameleonError::SandboxLaunch {
+                detail: "浏览器未能以调试模式启动。".into(),
+            },
+        })?;
     let dir_for_cleanup = dir.clone();
     tokio::spawn(async move {
         use futures::StreamExt;

@@ -53,6 +53,29 @@ fn port_open(port: u16) -> bool {
     TcpStream::connect(("127.0.0.1", port)).is_ok()
 }
 
+/// 把 chromiumoxide 启动错误分类为可操作的中文提示（不泄漏原始 stderr 技术栈）。
+/// 区分高发原因：启动超时 / 立即退出（多为数据目录被另一 Chrome 占用）→ 独立错误码，
+/// 其余归入 LaunchFailed / CdpConnectFailed，detail 一律是自洽中文。
+pub fn classify_launch_err(e: chromiumoxide::error::CdpError) -> ChameleonError {
+    use chromiumoxide::error::CdpError;
+    match e {
+        CdpError::LaunchTimeout(_) => ChameleonError::BrowserStartTimeout,
+        CdpError::LaunchExit(..) => ChameleonError::BrowserExitedInstantly,
+        CdpError::LaunchIo(..) => ChameleonError::LaunchFailed {
+            detail: "读取浏览器启动输出失败。".into(),
+        },
+        CdpError::Io(_) => ChameleonError::LaunchFailed {
+            detail: "无法启动浏览器进程，请确认浏览器路径有效且当前用户有运行权限。".into(),
+        },
+        CdpError::Ws(_) | CdpError::NoResponse => ChameleonError::CdpConnectFailed {
+            detail: "与浏览器调试端口握手失败。".into(),
+        },
+        _ => ChameleonError::LaunchFailed {
+            detail: "浏览器未能以调试模式启动，请重试。".into(),
+        },
+    }
+}
+
 /// 驱动 chromiumoxide Handler 流（必须被轮询，否则 CDP 请求无响应）。
 fn spawn_handler(handler: chromiumoxide::Handler) {
     tokio::spawn(async move {
@@ -98,7 +121,7 @@ pub async fn launch_role(
     let config = build_config(role, &browser_path, cfg)?;
     let (browser, handler) = Browser::launch(config)
         .await
-        .map_err(|e| ChameleonError::LaunchFailed { detail: e.to_string() })?;
+        .map_err(classify_launch_err)?;
     spawn_handler(handler);
     session.roles.insert(
         role.id.clone(),
@@ -145,7 +168,7 @@ pub async fn launch_role_no_session(
         let config = build_config(role, &browser_path, cfg)?;
         let (browser, handler) = Browser::launch(config)
             .await
-            .map_err(|e| ChameleonError::LaunchFailed { detail: e.to_string() })?;
+            .map_err(classify_launch_err)?;
         spawn_handler(handler);
         browser
     };
@@ -484,5 +507,31 @@ fn build_login_js(username: &str, password: &str, username_selector: Option<&str
 }})({}, {}, {}, {})"#,
         u, p, us, ps
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chromiumoxide::error::{BrowserStderr, CdpError};
+
+    #[test]
+    fn classify_launch_err_maps_timeout_to_start_timeout() {
+        let e = CdpError::LaunchTimeout(BrowserStderr::new(Vec::new()));
+        assert!(matches!(
+            classify_launch_err(e),
+            ChameleonError::BrowserStartTimeout
+        ));
+    }
+
+    #[test]
+    fn classify_launch_err_maps_io_to_launch_failed_chinese() {
+        let e = CdpError::Io(std::io::Error::new(std::io::ErrorKind::Other, "boom"));
+        match classify_launch_err(e) {
+            ChameleonError::LaunchFailed { detail } => {
+                assert!(detail.contains("无法启动浏览器"), "detail 应为中文: {detail}");
+            }
+            other => panic!("应为 LaunchFailed，得到 {other:?}"),
+        }
+    }
 }
 
