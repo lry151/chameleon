@@ -68,12 +68,15 @@ async fn launch_one(
     }
     // 解锁后执行慢操作（浏览器检测 + 启动）
     match launcher::launch_role_no_session(&cfg, &role, true).await {
-        Ok(browser) => {
+        Ok((browser, handle)) => {
             let mut s = session.lock().await;
             s.roles.insert(
                 role.id.clone(),
                 crate::session::RunningRole { browser, active_page: None },
             );
+            if let Some(tx) = s.event_tx.clone() {
+                launcher::spawn_role_watcher(handle, role.id.clone(), tx);
+            }
             // 自动打开预设 URL
             if let Some(run) = s.roles.get_mut(&role.id) {
                 for url in launcher::collect_auto_open_urls(&role, &cfg) {
@@ -213,6 +216,13 @@ pub async fn close_system(
     cfg: Arc<tokio::sync::Mutex<GlobalConfig>>,
     system_id: &str,
 ) -> BatchResult {
+    // 先清理外部已关的死角色（用户手动 X 掉窗口后进程退出、session 仍持死句柄），
+    // 否则 close_one → capture_bounds 对死 CDP 句柄执行无超时 execute 永久挂起
+    // → 关闭组按钮一直转圈。对齐 start_system 的 prune。
+    {
+        let mut s = session.lock().await;
+        launcher::prune_dead_roles(&mut s).await;
+    }
     let to_close: Vec<String> = {
         let s = session.lock().await;
         let c = cfg.lock().await;
@@ -251,6 +261,12 @@ pub async fn close_all(
     store: ConfigStore,
     cfg: Arc<tokio::sync::Mutex<GlobalConfig>>,
 ) -> BatchResult {
+    // 先清理外部已关的死角色（用户手动 X 掉窗口），避免对死 CDP 句柄
+    // 执行无超时 capture_bounds 永久挂起 → 一键关闭按钮一直转圈。
+    {
+        let mut s = session.lock().await;
+        launcher::prune_dead_roles(&mut s).await;
+    }
     let role_ids: Vec<String> = {
         let s = session.lock().await;
         s.roles.keys().cloned().collect()

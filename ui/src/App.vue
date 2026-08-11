@@ -6,6 +6,7 @@
     <n-loading-bar-provider>
       <n-dialog-provider>
         <n-message-provider>
+          <ExitWatcher />
           <div class="app-shell">
             <Topbar
               @open-settings="showSettings = true"
@@ -55,6 +56,7 @@ import SettingsDialog from "./components/SettingsDialog.vue";
 import RoleDialog from "./components/RoleDialog.vue";
 import SystemDialog from "./components/SystemDialog.vue";
 import LinksDialog from "./components/LinksDialog.vue";
+import ExitWatcher from "./components/ExitWatcher.vue";
 import { useTheme } from "./composables/useTheme";
 import { loadPrefs } from "./composables/usePrefs";
 import { loadAppState } from "./composables/useAppState";

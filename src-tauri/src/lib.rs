@@ -12,8 +12,9 @@ use chameleon_core::{
     model::{LoginConfig, QuickLinkLogin, Role, System, UiPreferences},
     quicklinks, sandbox,
     snapshot::SnapshotStore,
-    ChameleonError, Session,
+    ChameleonError, Session, SessionEvent,
 };
+use tauri::Emitter;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -109,6 +110,13 @@ pub struct AppStateView {
     pub backdrop: String,
     pub data_root: String,
     pub log_path: String,
+}
+
+/// `{role,sandbox}-exited` 事件载荷：前端据此刷新运行态 + 非阻塞提示。
+/// 仅当「外部/意外关闭」时发射（工具主动关闭由 close 路径自行刷新前端）。
+#[derive(Clone, Serialize)]
+struct ExitedPayload {
+    id: String,
 }
 
 /// —— 查询 ——
@@ -618,6 +626,15 @@ pub fn run() {
         chameleon_core::warn_err(sandbox::cleanup_orphans(&[], &cfg), "启动清理孤儿沙箱失败");
     }
 
+    // 被动感知浏览器退出：channel 把 launch 的 watcher 信号转发到前端。
+    // 接收任务在 setup 里 spawn，拥有 Arc<Session> + AppHandle。
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<SessionEvent>();
+    let session = Arc::new(tokio::sync::Mutex::new(Session {
+        event_tx: Some(Arc::new(event_tx)),
+        ..Session::default()
+    }));
+    let session_for_forwarder = Arc::clone(&session);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // 二次启动 → 激活已有实例主窗口（替换单实例文件锁）
@@ -625,7 +642,7 @@ pub fn run() {
             show_main_window(app);
         }))
         .manage(AppState {
-            session: Arc::new(tokio::sync::Mutex::new(Session::default())),
+            session,
             app_dir: app_dir.clone(),
             log_path: log_path.clone(),
         })
@@ -688,6 +705,39 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            // 单接收任务：把 watcher 发出的 SessionEvent 路由到前端。
+            // remove 在工具主动关闭路径已先行完成 → 此处返回 None → 静默；
+            // 仅「外部/意外关闭」时 emit，前端据此刷新角色按钮 + 非阻塞提示。
+            let app_handle = app.handle().clone();
+            tokio::spawn(async move {
+                let mut rx = event_rx;
+                while let Some(ev) = rx.recv().await {
+                match ev {
+                    SessionEvent::RoleExited { id } => {
+                        let unexpected = session_for_forwarder
+                            .lock()
+                            .await
+                            .roles
+                            .remove(&id)
+                            .is_some();
+                        if unexpected {
+                            let _ = app_handle.emit("role-exited", ExitedPayload { id });
+                        }
+                    }
+                    SessionEvent::SandboxExited { id } => {
+                        let unexpected = session_for_forwarder
+                            .lock()
+                            .await
+                            .sandboxes
+                            .remove(&id)
+                            .is_some();
+                        if unexpected {
+                            let _ = app_handle.emit("sandbox-exited", ExitedPayload { id });
+                        }
+                    }
+                }
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| {

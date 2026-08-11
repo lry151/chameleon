@@ -70,19 +70,25 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
                 detail: "浏览器未能以调试模式启动。".into(),
             },
         })?;
+    // 复用 launcher::spawn_handler（含 kill 路径的 Some(Err) 终止修复），
+    // 避免 sandbox 自带循环重复实现、且修好「沙箱被 kill 时目录不删」的潜在泄漏。
+    let handle = crate::launcher::spawn_handler(handler);
     let dir_for_cleanup = dir.clone();
+    let id_for_event = id.clone();
+    let tx = session.event_tx.clone();
     tokio::spawn(async move {
-        use futures::StreamExt;
-        let mut handler = handler;
-        // Handler 流在浏览器关闭（CDP 关闭或用户直接点 X）时结束
-        while handler.next().await.is_some() {}
-        // 进程退出 → 删除临时数据目录（spec：工具监听沙箱进程退出即删除）。
-        // 滞留的子进程可能短暂占用文件，remove_dir_all 失败则重试几次兜底。
+        let _ = handle.await;
+        // 进程退出 → 删除临时数据目录。滞留子进程可能短暂占用文件，
+        // remove_dir_all 失败则重试几次兜底。
         for _ in 0..5 {
             if std::fs::remove_dir_all(&dir_for_cleanup).is_ok() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        // 通知接收端：外部关时前端刷新 + 提示；工具关（close 已先 remove）静默。
+        if let Some(tx) = tx {
+            let _ = tx.send(crate::session::SessionEvent::SandboxExited { id: id_for_event });
         }
     });
     session.sandboxes.insert(

@@ -490,3 +490,157 @@ async fn close_role_releases_port_for_immediate_relaunch() {
     launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
     let _ = dir;
 }
+
+/// 工单：手动 X 掉角色窗口后点「关闭组」一直转圈。
+/// close_system 必须先 prune 死角色，否则对死 CDP 句柄执行无超时
+/// `capture_bounds` 会永久挂起（chromiumoxide 对断开的 websocket 不回响应）。
+#[tokio::test]
+async fn close_system_returns_after_role_window_closed_externally() {
+    ensure_env();
+    if !browser_available() {
+        return;
+    }
+    let (_dir, store, mut cfg, mut role) = fixture_role("关闭组死句柄").await;
+    let sys = store.create_system(&mut cfg, "测试系统".into()).unwrap();
+    role.system_id = Some(sys.id.clone());
+    store.update_role(&mut cfg, role.clone()).unwrap();
+
+    let mut session = Session::default();
+    launcher::launch_role(&mut session, &cfg, &role, false).await.expect("launch");
+    assert!(session.is_role_running(&role.id));
+    // 模拟用户手动 X 掉窗口：杀子进程（进程消失、websocket 非优雅断开），
+    // session 仍持死 CDP 句柄。kill() 而非 close() —— 后者让 handler 干净退出、
+    // 后续 execute 快速失败，复现不出真挂死；只有进程消失才会让 execute 永久等响应。
+    {
+        let run = session.roles.get_mut(&role.id).unwrap();
+        let _ = run.browser.kill().await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    assert!(session.is_role_running(&role.id), "stale dead entry remains pre-close");
+
+    let session = Arc::new(tokio::sync::Mutex::new(session));
+    let cfg = Arc::new(tokio::sync::Mutex::new(cfg));
+    // 修复前：close_system 不 prune → close_one 对死句柄 capture_bounds 永久挂 → 超时（红）
+    // 修复后：先 prune 探活（version 超时失败）移除死角色 → to_close 空 → 立即返回
+    let res = tokio::time::timeout(
+        std::time::Duration::from_secs(12),
+        batch::close_system(session.clone(), store.clone(), cfg, &sys.id),
+    )
+    .await
+    .expect("close_system must not hang on a dead browser handle");
+    assert_eq!(res.failed, 0, "close_system errors: {:?}", res.errors);
+    assert!(
+        !session.lock().await.is_role_running(&role.id),
+        "dead role removed from session"
+    );
+}
+
+/// 对称守卫：一键关闭同样先 prune 死角色，否则对死句柄 close_one 挂死。
+#[tokio::test]
+async fn close_all_returns_after_role_window_closed_externally() {
+    ensure_env();
+    if !browser_available() {
+        return;
+    }
+    let (_dir, store, cfg, role) = fixture_role("一键关闭死句柄").await;
+    let mut session = Session::default();
+    launcher::launch_role(&mut session, &cfg, &role, false).await.expect("launch");
+    {
+        let run = session.roles.get_mut(&role.id).unwrap();
+        let _ = run.browser.kill().await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    assert!(session.is_role_running(&role.id), "stale dead entry remains pre-close");
+
+    let session = Arc::new(tokio::sync::Mutex::new(session));
+    let cfg = Arc::new(tokio::sync::Mutex::new(cfg));
+    let res = tokio::time::timeout(
+        std::time::Duration::from_secs(12),
+        batch::close_all(session.clone(), store.clone(), cfg),
+    )
+    .await
+    .expect("close_all must not hang on a dead browser handle");
+    assert_eq!(res.failed, 0, "close_all errors: {:?}", res.errors);
+    assert!(
+        !session.lock().await.is_role_running(&role.id),
+        "dead role removed from session"
+    );
+}
+
+/// 被动感知回归守卫：launch 后 watcher 必须监听 handler 完成，
+/// 浏览器被杀时 event 通道必须收到 RoleExited（毫秒级，不依赖 prune）。
+#[tokio::test]
+async fn watcher_emits_role_exited_on_external_close() {
+    ensure_env();
+    if !browser_available() {
+        return;
+    }
+    let (_dir, _store, cfg, role) = fixture_role("watcher-退出事件").await;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<chameleon_core::SessionEvent>();
+    let mut session = Session {
+        event_tx: Some(std::sync::Arc::new(tx)),
+        ..Session::default()
+    };
+    launcher::launch_role(&mut session, &cfg, &role, false).await.expect("launch");
+    // kill（SIGKILL 进程）= 最严苛场景：连接出错而非优雅关闭。
+    // 修复前：消费循环不识别 Some(Err) 为终止 → handler 任务挂起 → watcher 不触发（5s 超时红）。
+    // 修复后：spawn_handler 遇 Some(Err) 也 break → 任务结束 → watcher 发事件。
+    {
+        let run = session.roles.get_mut(&role.id).unwrap();
+        let _ = run.browser.kill().await;
+    }
+
+    // 被动感知应在秒级内发出；不依赖 prune。
+    let ev = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("watcher must emit RoleExited within 5s of external close")
+        .expect("channel must not close before event");
+    match ev {
+        chameleon_core::SessionEvent::RoleExited { id } => assert_eq!(id, role.id),
+        other => panic!("expected RoleExited, got {other:?}"),
+    }
+}
+
+/// 沙箱被动感知 + kill 路径目录清理回归守卫。
+/// 修复前：沙箱被 kill 时消费循环不终止 → 清理任务不跑 → 临时目录泄漏、无事件。
+#[tokio::test]
+async fn sandbox_watcher_emits_on_kill_and_cleans_dir() {
+    ensure_env();
+    if !browser_available() {
+        return;
+    }
+    let (_dir, _store, cfg, _role) = fixture_role("沙箱watcher").await;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<chameleon_core::SessionEvent>();
+    let mut session = Session {
+        event_tx: Some(std::sync::Arc::new(tx)),
+        ..Session::default()
+    };
+    let info = sandbox::launch(&mut session, &cfg).await.expect("sandbox launch");
+    let sb_dir = info.dir.clone();
+    let id = info.id.clone();
+    assert!(sb_dir.exists(), "sandbox dir created");
+
+    // kill 沙箱进程 → spawn_handler 遇 Some(Err) 终止 → 清理任务跑。
+    {
+        let sb = session.sandboxes.get_mut(&id).unwrap();
+        let _ = sb.browser.kill().await;
+    }
+
+    let ev = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("sandbox watcher must emit SandboxExited within 5s of kill")
+        .expect("channel must not close before event");
+    match ev {
+        chameleon_core::SessionEvent::SandboxExited { id: eid } => assert_eq!(eid, id),
+        other => panic!("expected SandboxExited, got {other:?}"),
+    }
+
+    // 清理任务删临时目录（kill 路径修复前会泄漏）。
+    for _ in 0..30 {
+        if !sb_dir.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    assert!(!sb_dir.exists(), "sandbox temp dir must be deleted on kill");
+}
