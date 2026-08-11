@@ -26,7 +26,11 @@ impl ConfigStore {
     /// 加载配置；文件不存在时返回默认配置（不落盘，首次保存时落盘）。
     pub fn load(&self) -> Result<GlobalConfig> {
         if !self.path.exists() {
-            return Ok(GlobalConfig::default());
+            // 首次运行：Default 用廉价的 app_dir()/data；覆盖为可写性探优的
+            // default_data_root()——装在 Program Files 时回落到 per-user 目录，避免不可写。
+            let mut cfg = GlobalConfig::default();
+            cfg.data_root = default_data_root();
+            return Ok(cfg);
         }
         let raw = fs::read_to_string(&self.path)
             .map_err(|e| ChameleonError::ConfigRead { detail: e.to_string() })?;
@@ -159,10 +163,42 @@ pub fn app_dir() -> PathBuf {
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
+/// 目录是否可写：create_dir_all + 写删哨兵文件。判 exe 目录能否放数据用。
+pub fn is_writable(dir: &Path) -> bool {
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".chameleon-writable");
+    let ok = std::fs::write(&probe, b"").is_ok();
+    if ok {
+        let _ = std::fs::remove_file(&probe);
+    }
+    ok
+}
 
-/// 默认数据根目录：应用目录下 `data`，与 exe 随行。
+/// 数据根基准目录（不含 `data` 叶子）。判据是「OS 担保当前用户可写」而非「exe 在哪」：
+/// exe 目录可写 → 便携（贴 exe，零安装、可搬迁）；exe 在受保护位（Program Files 等）不可写
+/// → 回落到 OS 担保的 per-user 本机数据目录（Win %LOCALAPPDATA%\chameleon 不漫游 /
+/// Lin ~/.local/share/chameleon / Mac ~/Library/Application Support/chameleon）。
+/// portable_candidate 为 exe 目录，注入参数便于测试。
+pub fn data_base_for(portable_candidate: &Path) -> PathBuf {
+    if is_writable(&portable_candidate.join("data")) {
+        return portable_candidate.to_path_buf();
+    }
+    dirs::data_dir()
+        .map(|d| d.join("chameleon"))
+        .unwrap_or_else(|| portable_candidate.to_path_buf())
+}
+
+/// 当前进程的数据根基准目录（exe 目录探可写，否则回落 per-user）。
+pub fn data_base() -> PathBuf {
+    data_base_for(&app_dir())
+}
+
+/// 默认数据根目录：基准目录下 `data` 子目录。首次运行据此决定数据落点，
+/// 装在 Program Files 时自动回落到 per-user，永远可写。
 pub fn default_data_root() -> PathBuf {
-    app_dir().join("data")
+    data_base().join("data")
 }
 
 /// 把相对的 data_root / 各角色 profile_dir 重定基到应用目录。
@@ -223,6 +259,30 @@ mod tests {
         let role = store.create_role(&mut cfg, "admin".into(), "#fff".into()).unwrap();
         assert!(role.profile_dir.is_absolute(),
             "profile_dir 必须绝对，实为 {:?}", role.profile_dir);
+    }
+
+    #[test]
+    fn data_base_uses_portable_dir_when_writable() {
+        // exe 目录可写（便携/U 盘/普通文件夹）→ 基准落 exe 目录，data_root = exe/data。
+        let dir = tempdir().unwrap();
+        let base = data_base_for(dir.path());
+        assert!(base.as_path() == dir.path(), "便携基准应=exe 目录，实为 {:?}", base);
+        assert_eq!(base.join("data"), dir.path().join("data"));
+    }
+
+    #[test]
+    fn data_base_falls_back_to_per_user_when_exe_dir_unwritable() {
+        // exe 位置不可写（模拟 Program Files 安装）→ 基准须回落到 OS 担保的 per-user
+        // 本机数据目录，不留在受保护位置。Win=%LOCALAPPDATA%\chameleon（不漫游）。
+        let dir = tempdir().unwrap();
+        let file_as_exe_dir = dir.path().join("not-a-dir"); // 用文件模拟不可写目录
+        fs::write(&file_as_exe_dir, b"x").unwrap();
+        let base = data_base_for(&file_as_exe_dir);
+        assert!(base.is_absolute(), "回落后基准须绝对，实为 {:?}", base);
+        assert!(!base.starts_with(&file_as_exe_dir),
+            "不应留在不可写的 exe 位置，实为 {:?}", base);
+        assert!(base.ends_with("chameleon"),
+            "应回落到 per-user 下的 chameleon，实为 {:?}", base);
     }
 
     #[test]

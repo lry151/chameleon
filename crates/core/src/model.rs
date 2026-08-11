@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::config::default_data_root;
+use crate::config::app_dir;
 
 /// 常用 URL 预设：名称 + 地址 + 是否启动时自动打开。
 /// 可选挂登录凭据（含密码）—— 点击该预设时自动打开 URL 并填用户名/密码。
@@ -159,7 +159,7 @@ impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
             browser_path: None,
-            data_root: default_data_root(),
+            data_root: app_dir().join("data"),
             roles: Vec::new(),
             systems: Vec::new(),
             ui_preferences: UiPreferences::default(),
