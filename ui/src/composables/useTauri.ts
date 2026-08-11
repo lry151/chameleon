@@ -154,4 +154,7 @@ export const tauri = {
   appMinimize: () => invoke<void>("app_minimize"),
   appMaximize: () => invoke<void>("app_maximize"),
   appHide: () => invoke<void>("app_hide"),
+
+  // —— 日志 ——
+  openLogFolder: () => invoke<void>("open_log_folder"),
 };

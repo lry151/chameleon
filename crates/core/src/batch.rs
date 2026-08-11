@@ -78,14 +78,18 @@ async fn launch_one(
             if let Some(run) = s.roles.get_mut(&role.id) {
                 for url in launcher::collect_auto_open_urls(&role, &cfg) {
                     if let Ok(page) = run.browser.new_page(chromiumoxide_cdp::cdp::browser_protocol::target::CreateTargetParams::new(&url)).await {
-                        let _ = page.activate().await;
+                        crate::warn_err(page.activate().await, "批量启动预设 page.activate 失败");
                         run.active_page = Some(page.target_id().clone());
                     }
                 }
             }
+            tracing::info!(role_id = %role.id, "批量启动成功");
             out.push_ok();
         }
-        Err(e) => out.push_error(e),
+        Err(e) => {
+            tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "批量启动失败");
+            out.push_error(e)
+        }
     }
     out
 }
@@ -121,11 +125,15 @@ async fn close_one(
                 if let Some(slot) = c.roles.iter_mut().find(|r| r.id == id) {
                     slot.window_rect = Some(rect);
                 }
-                let _ = store.save(&c);
+                crate::warn_err(store.save(&c), "批量关闭保存窗口位置失败");
             }
+            tracing::info!(role_id = %id, "批量关闭成功");
             out.push_ok();
         }
-        Err(e) => out.push_error(e),
+        Err(e) => {
+            tracing::warn!(error = %e, role_id = %id, "批量关闭失败");
+            out.push_error(e)
+        }
     }
     out
 }

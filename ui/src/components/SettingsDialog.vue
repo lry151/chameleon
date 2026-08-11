@@ -69,9 +69,20 @@
           <n-button @click="handlePickBrowser">选择文件</n-button>
         </div>
         <!-- 完整路径（n-select 长路径会省略，这里完整展示，便于核对） -->
-        <n-text v-if="browserPath" class="settings-browser-path" depth="3">
+        <n-text v-if="browserPath" class="settings-path" depth="3">
           {{ browserPath }}
         </n-text>
+      </div>
+
+      <!-- 段 5：日志 -->
+      <div class="settings-section">
+        <n-text class="settings-label">日志</n-text>
+        <div class="settings-row">
+          <n-text class="settings-path" depth="3">
+            {{ appState.log_path }}
+          </n-text>
+          <n-button @click="handleOpenLogFolder">打开日志文件夹</n-button>
+        </div>
       </div>
     </div>
   </n-modal>
@@ -122,6 +133,14 @@ async function handlePickBrowser() {
     }
   } catch (err) {
     message.error("选择浏览器失败");
+  }
+}
+
+async function handleOpenLogFolder() {
+  try {
+    await tauri.openLogFolder();
+  } catch (err) {
+    message.error("打开日志文件夹失败");
   }
 }
 
@@ -219,7 +238,7 @@ async function onAfterLeave() {
   flex: 1 1 auto;
 }
 
-.settings-browser-path {
+.settings-path {
   font-size: 12px;
   word-break: break-all;
   line-height: 1.4;

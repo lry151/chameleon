@@ -42,5 +42,6 @@ pub async fn handoff(
         launcher::close_role(session, store, cfg, source_id).await?;
     }
     launcher::open_tab(session, cfg, target_id, &url).await?;
+    tracing::info!(source_id = source_id, target_id = target_id, url = %url, "接力完成");
     Ok(url)
 }
