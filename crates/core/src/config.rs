@@ -30,8 +30,9 @@ impl ConfigStore {
         }
         let raw = fs::read_to_string(&self.path)
             .map_err(|e| ChameleonError::ConfigRead { detail: e.to_string() })?;
-        let cfg: GlobalConfig = serde_json::from_str(&raw)
+        let mut cfg: GlobalConfig = serde_json::from_str(&raw)
             .map_err(|e| ChameleonError::ConfigInvalid { detail: e.to_string() })?;
+        absolutize_paths(&mut cfg);
         safety::validate_config(&cfg)?;
         Ok(cfg)
     }
@@ -164,6 +165,23 @@ pub fn default_data_root() -> PathBuf {
     app_dir().join("data")
 }
 
+/// 把相对的 data_root / 各角色 profile_dir 重定基到应用目录。
+/// 便携布局下「相对路径 = 相对 exe 目录」。历史/手编 config.json 常遗留相对路径
+/// （旧版默认 data_root 即相对 "data"），原样交给 Chrome 会以相对 --user-data-dir 启动，
+/// Chrome 按其进程工作目录解析、常落到不可写位置（System32 / Program Files），
+/// 报 "cannot read and write to its data directory"。load 时就地愈合，幂等。
+/// ponytail: 不在读路径里回写磁盘——下次 save（如编辑角色）自然落盘绝对路径。
+fn absolutize_paths(cfg: &mut GlobalConfig) {
+    if cfg.data_root.is_relative() {
+        cfg.data_root = app_dir().join(&cfg.data_root);
+    }
+    for r in &mut cfg.roles {
+        if r.profile_dir.is_relative() {
+            r.profile_dir = app_dir().join(&r.profile_dir);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,6 +204,25 @@ mod tests {
         assert_eq!(loaded.roles[0].name, "ERP-管理员");
         assert_eq!(loaded.roles[0].cdp_port, role.cdp_port);
         assert!(loaded.roles[0].profile_dir.starts_with(&cfg.data_root));
+    }
+
+    #[test]
+    fn first_run_data_root_and_profile_dir_are_absolute() {
+        // 首次运行：config.json 不存在 → load() 返回默认配置（不落盘）。
+        // data_root 必须是绝对路径：否则 create_role 派生出的 profile_dir 也是相对的，
+        // 随后以相对 --user-data-dir 传给 Chrome。Chrome 按其进程工作目录解析该相对路径，
+        // 常落到不可写位置（System32 / Program Files），弹出
+        // "Google Chrome cannot read and write to its data directory: data\admin"。
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config.json"));
+
+        let mut cfg = store.load().unwrap(); // 不落盘的首次默认
+        assert!(cfg.data_root.is_absolute(),
+            "data_root 必须绝对，实为 {:?}", cfg.data_root);
+
+        let role = store.create_role(&mut cfg, "admin".into(), "#fff".into()).unwrap();
+        assert!(role.profile_dir.is_absolute(),
+            "profile_dir 必须绝对，实为 {:?}", role.profile_dir);
     }
 
     #[test]
@@ -263,6 +300,37 @@ mod tests {
         assert_eq!(cfg.ui_preferences.theme, ThemeMode::Dark);
         assert!((cfg.ui_preferences.panel_opacity - 0.72).abs() < f32::EPSILON);
         assert_eq!(cfg.ui_preferences.accent_color, "#1abc9c");
+    }
+
+    #[test]
+    fn load_heals_relative_paths_from_poisoned_config() {
+        // 同事场景：历史/手编 config.json 里 data_root 与 profile_dir 都是相对路径
+        // （首次运行用旧默认 "data" 创建角色后落盘的产物）。load() 必须把它们重定基到
+        // 应用目录，否则启动时仍以相对 --user-data-dir 传给浏览器，复现
+        // "Google Chrome cannot read and write to its data directory: data\admin"。
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let poisoned = r##"{
+            "browser_path": null,
+            "data_root": "data",
+            "roles": [{
+                "id": "deadbeef",
+                "name": "admin",
+                "color": "#fff",
+                "profile_dir": "data\\admin",
+                "cdp_port": 9222,
+                "quick_links": [],
+                "window_rect": null
+            }],
+            "systems": [],
+            "ui_preferences": { "theme": "Dark", "panel_opacity": 0.72, "accent_color": "#1abc9c" }
+        }"##;
+        fs::write(&path, poisoned).unwrap();
+        let cfg = ConfigStore::new(&path).load().unwrap();
+        assert!(cfg.data_root.is_absolute(),
+            "data_root 愈合后须绝对，实为 {:?}", cfg.data_root);
+        assert!(cfg.roles[0].profile_dir.is_absolute(),
+            "profile_dir 愈合后须绝对，实为 {:?}", cfg.roles[0].profile_dir);
     }
 
     #[test]
