@@ -162,18 +162,19 @@ fn read_enable_transparency() -> Option<bool> {
 /// DWM 桌面合成是否可用。RDP 基础主题 / 部分虚拟机下为 false → 无任何半透效果。
 #[cfg(target_os = "windows")]
 fn dwm_composition_enabled() -> bool {
-    use windows::Win32::Foundation::BOOL;
     use windows::Win32::Graphics::Dwm::DwmIsCompositionEnabled;
-    let mut enabled = BOOL::default();
-    unsafe { DwmIsCompositionEnabled(&mut enabled) }.is_ok() && enabled.as_bool()
+    // windows 0.61: DwmIsCompositionEnabled() -> Result<BOOL>（无参数）。
+    unsafe { DwmIsCompositionEnabled() }
+        .map(|b| b.as_bool())
+        .unwrap_or(false)
 }
 
 /// 读 `HKCU\…\Themes\Personalize` 下的 DWORD 值。
 #[cfg(target_os = "windows")]
-fn read_personalize_dword(value_name: &windows::core::HSTRING) -> Option<u32> {
+fn read_personalize_dword(value_name: windows::core::PCWSTR) -> Option<u32> {
     use windows::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
-        REG_VALUE_TYPE, RRF_RT_REG_DWORD,
+        REG_VALUE_TYPE,
     };
     use windows::core::w;
 
@@ -210,7 +211,7 @@ let mut key = HKEY::default();
     if result.is_err() {
         return None;
     }
-    Some(data == 1)
+    Some(data)
 }
 
 /// 把 [`VibrancyPlan`] 作用到窗口。非 Windows 是 no-op（返回 Ok）。
