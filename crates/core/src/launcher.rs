@@ -3,7 +3,7 @@
 //! 首次启动自动打开预设、登录辅助（半自动填用户名）。
 
 use crate::browser;
-use crate::config::ConfigStore;
+use crate::config::{is_writable, ConfigStore};
 use crate::error::{ChameleonError, Result};
 use crate::model::{GlobalConfig, QuickLinkLogin, Role};
 use crate::safety;
@@ -24,6 +24,18 @@ fn headless() -> bool {
 /// 构建角色的隔离启动参数。
 fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<BrowserConfig> {
     safety::validate_role(role, cfg)?;
+    debug_assert!(role.profile_dir.is_absolute(),
+        "profile_dir 须绝对（数据根愈合在 load 时），实为 {:?}", role.profile_dir);
+    if !is_writable(&role.profile_dir) {
+        return Err(ChameleonError::LaunchFailed {
+            detail: format!(
+                "数据目录不可写：{}。变色龙可能装在受保护位置（如 Program Files），\
+                 或 config.json 的 data_root 指向不可写路径。请移到普通文件夹，\
+                 或在 config.json 把 data_root 设为可写的绝对路径。",
+                role.profile_dir.display()
+            ),
+        });
+    }
     let mut b = BrowserConfig::builder();
     b = if headless() { b.new_headless_mode() } else { b.with_head() };
     let mut b = b
@@ -531,6 +543,23 @@ mod tests {
                 assert!(detail.contains("无法启动浏览器"), "detail 应为中文: {detail}");
             }
             other => panic!("应为 LaunchFailed，得到 {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_config_rejects_unwritable_profile_dir() {
+        // 显式指向不可写位置（如残留在 Program Files 下的旧 data_root）→ 启动前即清晰报错，
+        // 不让 Chrome 弹 "cannot read and write to its data directory"。
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("blocker");
+        std::fs::write(&blocker, b"x").unwrap();
+        let role = Role::new("x".into(), "#fff".into(), blocker.join("admin"), 9222);
+        let cfg = GlobalConfig { data_root: blocker.join("data"), ..Default::default() };
+        match build_config(&role, Path::new("dummy-browser"), &cfg) {
+            Err(ChameleonError::LaunchFailed { detail }) => {
+                assert!(detail.contains("数据目录不可写"), "detail 应点明不可写: {detail}");
+            }
+            other => panic!("应为 LaunchFailed（数据目录不可写），得到 {other:?}"),
         }
     }
 }
