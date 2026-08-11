@@ -9,8 +9,45 @@ permissions:
   contents: read
 
 jobs:
+  fmt-clippy:
+    name: fmt + clippy (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./ -> target"
+          shared-key: ci-linux
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+
+      - name: rustfmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  deny:
+    name: cargo-deny (advisories / licenses / bans)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # 扫描器选型 + 配置范围见 docs/adr/0013-ci-quality-gates.md。
+      # 只跑 advisories/licenses/bans 三项（sources 不入：.cargo/config.toml
+      # 用 rsproxy 源替换，sources 检查会把 rsproxy 当未知 registry 告警）。
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command-arguments: advisories licenses bans
+
   test-core:
-    name: Test chameleon-core
+    name: Test chameleon-core (ubuntu)
     runs-on: ubuntu-latest
     env:
       CHAMELEON_HEADLESS: "1"
@@ -32,5 +69,28 @@ jobs:
       - name: Install Chromium
         uses: browser-actions/setup-chrome@v1
 
+      # 集成测试并行多 Chrome 在 WSL2 snap 上 flaky（LaunchIo），单线程即绿——别误判为回归
       - name: Run chameleon-core tests
-        run: cargo test -p chameleon-core
+        run: cargo test -p chameleon-core -- --test-threads=1
+
+  check-windows:
+    name: cargo check (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./ -> target"
+          shared-key: ci-windows
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+
+      # 验证 #[cfg(windows)] 代码（Mica/注册表/MessageBox/vibrancy）在 windows 上真编译，
+      # 而非 ubuntu 上的 cfg(not(windows)) 空 no-op（ADR-0013 / 工程 rule #5）。
+      # frontendDist:"www" 已提交，cargo check 无需构建前端。
+      - name: cargo check (whole workspace)
+        run: cargo check

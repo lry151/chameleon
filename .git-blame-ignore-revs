@@ -1,0 +1,5 @@
+# https://git-scm.com/docs/git-blame#Documentation/git-blame.txt---ignore-revs-file
+# 整 commit 为纯格式重排 + 机械 clippy 修复，忽略以保留 git blame 的真实作者归属。
+
+# cargo fmt --all + clippy -D warnings 全量清理（CI 质量门 cutover, #32）
+9d31728dc7efa7b80619cfc82dbf6c0c7e5bffeb

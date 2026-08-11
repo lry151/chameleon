@@ -1,0 +1,46 @@
+# cargo-deny 配置 — CI 质量门（advisories / licenses / bans）。
+# schema & 默认值：https://embarkstudios.github.io/cargo-deny/ （deny.template.toml）。
+# 由 .github/workflows/test.yml 的 deny job 调用 EmbarkStudios/cargo-deny-action。
+# 决议见 docs/adr/0013-ci-quality-gates.md。
+
+[graph]
+# 不限定 targets：让各平台专属依赖（windows 的 window-vibrancy/windows crate、
+# unix 的 nix 等）都进入扫描图，避免漏审平台条件依赖。
+
+[advisories]
+# vulnerability / unsound 默认即报错（不可降级，仅可用 ignore 豁免具体 ID）。
+# unmaintained 设为 none：chameleon 直接依赖 chromiumoxide 等可能被标「未维护」，
+# 但未维护 ≠ 可利用漏洞、平台条件依赖无法即时替换；改 review 把关，不阻断 CI。
+# 真正的 RustSec 漏洞仍 deny。可日后收紧到 workspace（仅直接依赖未维护才阻断）。
+unmaintained = "none"
+# yanked 默认 warn（不阻断）。
+ignore = []
+
+[licenses]
+# 只放行宽松许可证；表达式无法由 allow 集合满足 → deny（等同拒绝 copyleft / 未知许可证）。
+# allow 覆盖当前依赖树全部许可证：MPL-2.0（chromiumoxide）、Unicode-3.0、
+# Apache-2.0 WITH LLVM-exception 等均在列。唯一含 LGPL 的是 r-efi
+# （MIT OR Apache-2.0 OR LGPL-2.1-or-later），由 MIT/Apache 分支满足，无需放行 LGPL。
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "0BSD",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "CC0-1.0",
+    "Unlicense",
+]
+confidence-threshold = 0.8
+
+[bans]
+# 重复版本仅 warn：Rust 依赖图重复版本极常见（如 windows 子 crate 多版本），
+# deny 会过度阻断且往往无法在不破坏其他依赖的前提下消除。保留为信号，不阻断。
+multiple-versions = "warn"
+# 通配依赖（version = "*"）allow：workspace 内无通配依赖，保留默认。
+wildcards = "allow"
