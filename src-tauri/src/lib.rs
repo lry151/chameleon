@@ -60,19 +60,20 @@ fn init_logging(log_dir: PathBuf) -> (PathBuf, tracing_appender::non_blocking::W
 }
 
 /// 在 OS 文件管理器中打开目录（跨平台）。
-fn open_dir(dir: &std::path::Path) {
+fn open_dir(dir: &std::path::Path) -> std::result::Result<(), std::io::Error> {
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer").arg(dir).spawn();
+        std::process::Command::new("explorer").arg(dir).spawn()?;
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open").arg(dir).spawn();
+        std::process::Command::new("open").arg(dir).spawn()?;
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+        std::process::Command::new("xdg-open").arg(dir).spawn()?;
     }
+    Ok(())
 }
 
 pub struct AppState {
@@ -525,8 +526,10 @@ async fn quit_app(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<(
 #[tauri::command]
 async fn open_log_folder(state: State<'_, AppState>) -> Result<(), String> {
     let dir = state.log_path.parent().unwrap_or(&state.log_path);
-    open_dir(dir);
-    Ok(())
+    open_dir(dir).map_err(|e| {
+        tracing::warn!(error = %e, "打开日志文件夹失败");
+        format!("打开日志文件夹失败：{e}")
+    })
 }
 
 /// 优雅关闭全部角色窗口与沙箱。取 Arc+app_dir 的克隆，便于从托盘菜单
@@ -542,6 +545,7 @@ async fn shutdown(session: Arc<tokio::sync::Mutex<Session>>, app_dir: PathBuf) {
     for id in ids {
         chameleon_core::warn_err(sandbox::close(&mut session, &id).await, "shutdown 关闭沙箱失败");
     }
+    tracing::info!("chameleon 退出");
 }
 
 #[cfg(windows)]

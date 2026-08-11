@@ -83,6 +83,7 @@ async fn launch_one(
                     }
                 }
             }
+            tracing::info!(role_id = %role.id, "批量启动成功");
             out.push_ok();
         }
         Err(e) => {
@@ -126,6 +127,7 @@ async fn close_one(
                 }
                 crate::warn_err(store.save(&c), "批量关闭保存窗口位置失败");
             }
+            tracing::info!(role_id = %id, "批量关闭成功");
             out.push_ok();
         }
         Err(e) => {

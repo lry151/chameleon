@@ -89,6 +89,7 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
         id.clone(),
         RunningSandbox { id: id.clone(), dir: dir.clone(), browser },
     );
+    tracing::info!(sandbox_id = %id, sandbox_dir = %dir.display(), "沙箱启动");
     Ok(SandboxInfo { id, dir })
 }
 
@@ -102,6 +103,7 @@ pub async fn close(session: &mut Session, id: &str) -> Result<()> {
     // 再删目录，避免与仍在写 user-data-dir 的进程竞争（同 launcher::close_role）。
     crate::warn_timeout(sb.browser.wait(), 5, "沙箱 Browser.wait").await;
     crate::warn_err(fs::remove_dir_all(&sb.dir), "沙箱目录删除失败");
+    tracing::info!(sandbox_id = id, "沙箱关闭");
     Ok(())
 }
 

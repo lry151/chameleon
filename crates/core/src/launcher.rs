@@ -97,6 +97,31 @@ fn spawn_handler(handler: chromiumoxide::Handler) {
     });
 }
 
+/// `Browser::launch` 失败时记 ERROR（完整 detail 进日志，用户只见净化文案）再分类返回。
+async fn launch_browser(
+    config: BrowserConfig,
+    role: &Role,
+) -> Result<(Browser, chromiumoxide::Handler)> {
+    match Browser::launch(config).await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "浏览器启动失败");
+            Err(classify_launch_err(e))
+        }
+    }
+}
+
+/// CDP 接管既有实例；失败时按 ADR-0006 硬错误（不 fall-through 到 launch）。
+async fn connect_browser(role: &Role) -> Result<(Browser, chromiumoxide::Handler)> {
+    match Browser::connect(format!("http://127.0.0.1:{}", role.cdp_port)).await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "端口被占用但 CDP 接管失败");
+            Err(ChameleonError::PortTakenNotRole { port: role.cdp_port })
+        }
+    }
+}
+
 /// 启动角色窗口；已启动则幂等返回。端口被占用且 CDP 可达时接管既有实例。
 /// 首次启动（非接管）后打开角色首页锚点页签；`auto_open=true` 时再自动打开
 /// 标记 `auto_open` 的预设（角色级 + 所属系统级）。`auto_open=false`（快照恢复）
@@ -113,32 +138,18 @@ pub async fn launch_role(
     let browser_path = browser::detect_browser(cfg.browser_path.as_deref())?;
     let was_running = port_open(role.cdp_port);
     if was_running {
-        match Browser::connect(format!("http://127.0.0.1:{}", role.cdp_port)).await {
-            Ok((browser, handler)) => {
-                spawn_handler(handler);
-                session.roles.insert(
-                    role.id.clone(),
-                    RunningRole { browser, active_page: None },
-                );
-                return Ok(()); // 接管既有实例，不重复打开预设
-            }
-            Err(e) => {
-                // ADR-0006：端口被非浏览器/僵尸实例占用且无法接管 → 硬错误，
-                // 不再 fall-through 到 Browser::launch（在占用端口/锁定目录上反复
-                // spawn 瞬时窗口 = 「窗口一直闪」根因）。
-                tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "端口被占用但 CDP 接管失败");
-                return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
-            }
-        }
+        // connect_browser 失败 = ADR-0006：端口被非浏览器占用且无法接管 → 硬错误，
+        // 不 fall-through 到 Browser::launch（在占用端口上反复 spawn = 「窗口一直闪」根因）。
+        let (browser, handler) = connect_browser(role).await?;
+        spawn_handler(handler);
+        session.roles.insert(
+            role.id.clone(),
+            RunningRole { browser, active_page: None },
+        );
+        return Ok(()); // 接管既有实例，不重复打开预设
     }
     let config = build_config(role, &browser_path, cfg)?;
-    let (browser, handler) = match Browser::launch(config).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "浏览器启动失败");
-            return Err(classify_launch_err(e));
-        }
-    };
+    let (browser, handler) = launch_browser(config, role).await?;
     spawn_handler(handler);
     session.roles.insert(
         role.id.clone(),
@@ -180,25 +191,12 @@ pub async fn launch_role_no_session(
     let browser_path = browser::detect_browser(cfg.browser_path.as_deref())?;
     let was_running = port_open(role.cdp_port);
     let browser = if was_running {
-        match Browser::connect(format!("http://127.0.0.1:{}", role.cdp_port)).await {
-            Ok((browser, handler)) => {
-                spawn_handler(handler);
-                browser
-            }
-            Err(e) => {
-                tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "端口被占用但 CDP 接管失败");
-                return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
-            }
-        }
+        let (browser, handler) = connect_browser(role).await?;
+        spawn_handler(handler);
+        browser
     } else {
         let config = build_config(role, &browser_path, cfg)?;
-        let (browser, handler) = match Browser::launch(config).await {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "浏览器启动失败");
-                return Err(classify_launch_err(e));
-            }
-        };
+        let (browser, handler) = launch_browser(config, role).await?;
         spawn_handler(handler);
         browser
     };
@@ -237,7 +235,10 @@ pub async fn close_role(
     cfg: &mut GlobalConfig,
     role_id: &str,
 ) -> Result<()> {
-    let port = cfg.roles.iter().find(|r| r.id == role_id).map(|r| r.cdp_port);
+    let (port, profile_dir) = cfg.roles.iter()
+        .find(|r| r.id == role_id)
+        .map(|r| (r.cdp_port, r.profile_dir.display().to_string()))
+        .unzip();
     let Some(run) = session.roles.remove(role_id) else {
         return Err(ChameleonError::RoleNotRunning { id: role_id.into() });
     };
@@ -257,13 +258,13 @@ pub async fn close_role(
     if let Some(port) = port {
         for _ in 0..20 {
             if !port_open(port) {
-                tracing::info!(role_id = role_id, "角色窗口关闭");
+                tracing::info!(role_id = role_id, cdp_port = port, profile_dir = %profile_dir.clone().unwrap_or_default(), browser_path = %cfg.browser_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(), "角色窗口关闭");
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
-    tracing::info!(role_id = role_id, "角色窗口关闭");
+    tracing::info!(role_id = role_id, cdp_port = port, profile_dir = %profile_dir.unwrap_or_default(), browser_path = %cfg.browser_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(), "角色窗口关闭");
     Ok(())
 }
 

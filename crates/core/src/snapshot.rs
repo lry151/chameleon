@@ -74,6 +74,7 @@ impl SnapshotStore {
         fs::write(self.path_for(name), raw)
             .map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?;
         store.save(cfg)?;
+        tracing::info!(snapshot = name, "快照保存");
         Ok(())
     }
 
@@ -141,6 +142,7 @@ impl SnapshotStore {
             launcher::close_other_tabs(session, &role.id, &keep).await;
         }
         store.save(cfg)?;
+        tracing::info!(snapshot = name, "快照恢复");
         Ok(())
     }
 

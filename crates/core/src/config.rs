@@ -60,6 +60,7 @@ impl ConfigStore {
         }
         fs::rename(&tmp, &self.path)
             .map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
+        tracing::info!(roles = cfg.roles.len(), systems = cfg.systems.len(), "配置已保存");
         Ok(())
     }
 
