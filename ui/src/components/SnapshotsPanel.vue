@@ -87,6 +87,7 @@
 import { computed, ref } from "vue";
 import { useMessage } from "naive-ui";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 import { tauri } from "../composables/useTauri";
 defineProps<{
   show: boolean;
@@ -117,7 +118,7 @@ async function handleSave() {
     newName.value = "";
     await loadAppState();
   } catch (err) {
-    message.error("保存快照失败");
+    notifyBackendError(message, err, "保存快照失败");
   } finally {
     saving.value = false;
   }
@@ -129,7 +130,7 @@ async function handleRestore(name: string) {
     await tauri.restoreSnapshot(name);
     await loadAppState();
   } catch (err) {
-    message.error("恢复快照失败");
+    notifyBackendError(message, err, "恢复快照失败");
   }
 }
 
@@ -139,7 +140,7 @@ async function handleDelete(name: string) {
     await tauri.deleteSnapshot(name);
     await loadAppState();
   } catch (err) {
-    message.error("删除快照失败");
+    notifyBackendError(message, err, "删除快照失败");
   }
 }
 </script>

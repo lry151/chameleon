@@ -162,7 +162,7 @@ async function handleCloseAll() {
     await loadAppState();
     message.success("角色已全部关闭");
   } catch (err) {
-    message.error("关闭角色失败，请稍后重试");
+    notifyBackendError(message, err, "关闭角色失败");
   } finally {
     busyCloseAll.value = false;
   }
@@ -173,7 +173,7 @@ async function handleCleanup() {
     await tauri.cleanupTemp();
     await loadAppState();
   } catch (err) {
-    message.error("清理临时数据失败");
+    notifyBackendError(message, err, "清理临时数据失败");
   }
 }
 
@@ -182,7 +182,7 @@ async function handleExport() {
     await tauri.exportConfig();
     message.success("配置已导出");
   } catch (err) {
-    message.error("导出配置失败，请检查写入权限");
+    notifyBackendError(message, err, "导出配置失败");
   }
 }
 
@@ -191,8 +191,8 @@ async function handleImport() {
     await tauri.importConfig();
     await loadAppState();
     message.success("配置已导入");
-  } catch (err: any) {
-    message.error(`导入配置失败：${err?.message ?? err}`);
+  } catch (err) {
+    notifyBackendError(message, err, "导入配置失败");
   }
 }
 

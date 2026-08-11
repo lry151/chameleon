@@ -64,6 +64,13 @@ pub enum ChameleonError {
 pub type Result<T> = std::result::Result<T, ChameleonError>;
 
 impl ChameleonError {
+    /// 构建 CDP 操作失败：原始技术错误只进日志（WARN），用户面 detail 用自洽中文。
+    /// 对齐 `classify_launch_err` 的「原文进日志、用户只见净化文案」方针（ADR-0015）。
+    pub fn cdp_operation_failed(ctx: &str, msg: &str, raw: impl std::fmt::Display) -> Self {
+        tracing::warn!(raw = %raw, ctx = ctx, "CDP 操作失败");
+        ChameleonError::CdpOperation { detail: msg.to_string() }
+    }
+
     /// 对外展示的自然语言中文文案。技术细节绝不进入此文案。
     pub fn message(&self) -> String {
         match self {
@@ -167,5 +174,17 @@ mod tests {
         // CdpConnectFailed 也要带处理措施
         let cdp = ChameleonError::CdpConnectFailed { detail: "x".into() }.message();
         assert!(cdp.contains("处理措施"), "CdpConnectFailed 缺少处理措施: {cdp}");
+    }
+
+    #[test]
+    fn cdp_operation_failed_uses_chinese_detail_not_raw() {
+        // CDP/原文不得进用户文案（ADR-0015）：原始技术文本只进日志，detail 用自洽中文。
+        let e = ChameleonError::cdp_operation_failed(
+            "open_tab",
+            "打开新标签页失败",
+            "net::ERR_CONNECTION_REFUSED (os error 61)",
+        );
+        assert_eq!(e.message(), "浏览器操作失败：打开新标签页失败");
+        assert!(!e.message().contains("ERR_CONNECTION"), "原文泄漏: {}", e.message());
     }
 }

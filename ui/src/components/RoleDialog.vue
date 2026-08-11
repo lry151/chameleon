@@ -68,6 +68,7 @@ import { useMessage } from "naive-ui";
 import type { Role, RoleView } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 
 const props = defineProps<{
   show: boolean;
@@ -172,7 +173,7 @@ async function handleSave() {
     emit("saved");
     emit("update:show", false);
   } catch (err) {
-    message.error("保存角色失败，请稍后重试");
+    notifyBackendError(message, err, "保存角色失败");
     saving.value = false;
   }
 }

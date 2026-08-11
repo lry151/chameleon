@@ -65,6 +65,7 @@
 import { computed, ref } from "vue";
 import { useMessage } from "naive-ui";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 import { tauri } from "../composables/useTauri";
 defineProps<{
   show: boolean;
@@ -94,7 +95,7 @@ async function handleLaunch() {
     await tauri.launchSandbox();
     await loadAppState();
   } catch (err) {
-    message.error("启动沙箱失败");
+    notifyBackendError(message, err, "启动沙箱失败");
   } finally {
     launching.value = false;
   }
@@ -106,7 +107,7 @@ async function handleClose(id: string) {
     await tauri.closeSandbox(id);
     await loadAppState();
   } catch (err) {
-    message.error("关闭沙箱失败");
+    notifyBackendError(message, err, "关闭沙箱失败");
   } finally {
     closingId.value = null;
   }
@@ -118,7 +119,7 @@ async function handleCleanup() {
     await tauri.cleanupTemp();
     await loadAppState();
   } catch (err) {
-    message.error("清理沙箱数据失败");
+    notifyBackendError(message, err, "清理沙箱数据失败");
   }
 }
 </script>
