@@ -26,7 +26,7 @@ pub mod window;
 
 pub use error::{ChameleonError, Result};
 pub use model::{GlobalConfig, LoginConfig, QuickLink, Role, System, ThemeMode, UiPreferences, WindowRect};
-pub use session::Session;
+pub use session::{Session, SessionEvent};
 
 // —— tracing 降级路径辅助 ——
 
@@ -49,5 +49,18 @@ pub(crate) async fn warn_timeout<F: Future>(fut: F, secs: u64, ctx: &str) {
     .is_err()
     {
         tracing::warn!("{ctx} 超时（{secs}s）");
+    }
+}
+
+/// `warn_timeout` 的取值版：超时返回 `None` 并记 WARN，正常返回 `Some( fut 的输出 )`。
+/// 用于关闭路径里需要结果但绝不能挂死的 CDP 调用（如 `capture_bounds` 对死句柄
+/// 会永久阻塞——`Browser::execute` 用 oneshot 等响应、无单命令超时）。
+pub(crate) async fn with_timeout<F: Future>(fut: F, secs: u64, ctx: &str) -> Option<F::Output> {
+    match tokio::time::timeout(std::time::Duration::from_secs(secs), fut).await {
+        Ok(v) => Some(v),
+        Err(_) => {
+            tracing::warn!("{ctx} 超时（{secs}s）");
+            None
+        }
     }
 }

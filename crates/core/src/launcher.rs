@@ -13,6 +13,7 @@ use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide_cdp::cdp::browser_protocol::target::{CreateTargetParams, TargetId};
 use std::net::TcpStream;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// 测试/无显示环境（WSL、CI）置 `CHAMELEON_HEADLESS=1` 走 headless 模式。
@@ -92,11 +93,39 @@ pub fn classify_launch_err(e: chromiumoxide::error::CdpError) -> ChameleonError 
 }
 
 /// 驱动 chromiumoxide Handler 流（必须被轮询，否则 CDP 请求无响应）。
-fn spawn_handler(handler: chromiumoxide::Handler) {
+/// 返回 JoinHandle：当 websocket 断开（窗口被关 / 进程退出 / 崩溃）时 Handler 流
+/// 结束、JoinHandle resolve —— 这是被动感知浏览器退出的唯一可靠信号。
+///
+/// 连接断开有两种形态，都必须终止消费循环：
+/// - 干净关闭（Browser.close 响应 / 对端发 Close 帧）→ `next()` 返 `None`
+/// - kill / 崩溃 / TCP 断（`conn.poll_next` 出错）→ `next()` 返一次 `Some(Err)`，
+///   随后 chromiumoxide Handler 的 `Stream::poll_next` 返 `Pending` 永久挂起。
+/// 旧 `while next().is_some()` 不识别 `Some(Err)` 为终止 → kill 后任务永不结束
+/// → watcher 不触发、沙箱临时目录不删（泄漏）。故遇 `Some(Err)` 也 break。
+pub fn spawn_handler(handler: chromiumoxide::Handler) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         use futures::StreamExt;
         let mut handler = handler;
-        while handler.next().await.is_some() {}
+        loop {
+            match handler.next().await {
+                Some(Ok(())) => {}
+                Some(Err(_)) | None => break,
+            }
+        }
+    })
+}
+
+/// 监听 handler JoinHandle：连接断开时向 `event_tx` 发 `RoleExited`。
+/// watcher 不持 session 锁——只发信号；remove + 前端提示由接收端（src-tauri）
+/// 在单任务里做，避免 N 个 watcher 竞争 session 锁。None tx 时（测试）no-op。
+pub fn spawn_role_watcher(
+    handle: tokio::task::JoinHandle<()>,
+    id: String,
+    tx: Arc<tokio::sync::mpsc::UnboundedSender<crate::session::SessionEvent>>,
+) {
+    tokio::spawn(async move {
+        let _ = handle.await;
+        let _ = tx.send(crate::session::SessionEvent::RoleExited { id });
     });
 }
 
@@ -144,20 +173,26 @@ pub async fn launch_role(
         // connect_browser 失败 = ADR-0006：端口被非浏览器占用且无法接管 → 硬错误，
         // 不 fall-through 到 Browser::launch（在占用端口上反复 spawn = 「窗口一直闪」根因）。
         let (browser, handler) = connect_browser(role).await?;
-        spawn_handler(handler);
+        let h = spawn_handler(handler);
         session.roles.insert(
             role.id.clone(),
             RunningRole { browser, active_page: None },
         );
+        if let Some(tx) = session.event_tx.clone() {
+            spawn_role_watcher(h, role.id.clone(), tx);
+        }
         return Ok(()); // 接管既有实例，不重复打开预设
     }
     let config = build_config(role, &browser_path, cfg)?;
     let (browser, handler) = launch_browser(config, role).await?;
-    spawn_handler(handler);
+    let h = spawn_handler(handler);
     session.roles.insert(
         role.id.clone(),
         RunningRole { browser, active_page: None },
     );
+    if let Some(tx) = session.event_tx.clone() {
+        spawn_role_watcher(h, role.id.clone(), tx);
+    }
     tracing::info!(
         role_id = %role.id,
         role_name = %role.name,
@@ -184,24 +219,22 @@ pub async fn launch_role(
     Ok(())
 }
 
-/// 启动角色但不修改 Session（并行启动用）：返回建好的 Browser + handler。
-/// 调用方负责 spawn handler 并将 Browser 插入 Session。
+/// 启动角色但不修改 Session（并行启动用）：返回建好的 Browser + handler JoinHandle。
+/// 调用方负责将 Browser 插入 Session，并按需 `spawn_role_watcher` 监听退出。
 pub async fn launch_role_no_session(
     cfg: &GlobalConfig,
     role: &Role,
     auto_open: bool,
-) -> Result<Browser> {
+) -> Result<(Browser, tokio::task::JoinHandle<()>)> {
     let browser_path = browser::detect_browser(cfg.browser_path.as_deref())?;
     let was_running = port_open(role.cdp_port);
-    let browser = if was_running {
+    let (browser, handle) = if was_running {
         let (browser, handler) = connect_browser(role).await?;
-        spawn_handler(handler);
-        browser
+        (browser, spawn_handler(handler))
     } else {
         let config = build_config(role, &browser_path, cfg)?;
         let (browser, handler) = launch_browser(config, role).await?;
-        spawn_handler(handler);
-        browser
+        (browser, spawn_handler(handler))
     };
 
     // 自动打开预设（调用方已通过 insert 将 browser 放入 session 后才能执行）
@@ -210,7 +243,7 @@ pub async fn launch_role_no_session(
         let _urls = collect_auto_open_urls(role, cfg);
         // auto_open 页面由 batch 层在 insert 后通过 session 操作完成
     }
-    Ok(browser)
+    Ok((browser, handle))
 }
 
 /// 收集角色应自动打开的 URL（角色级 auto_open + 所属系统级 auto_open）。
@@ -245,7 +278,7 @@ pub async fn close_role(
     let Some(run) = session.roles.remove(role_id) else {
         return Err(ChameleonError::RoleNotRunning { id: role_id.into() });
     };
-    if let Ok(rect) = window::capture_bounds(&run.browser).await {
+    if let Some(rect) = crate::with_timeout(window::capture_bounds(&run.browser), 5, "capture_bounds").await.and_then(Result::ok) {
         if let Some(slot) = cfg.roles.iter_mut().find(|r| r.id == role_id) {
             slot.window_rect = Some(rect);
             store.save(cfg)?;
@@ -277,7 +310,7 @@ pub async fn close_role_no_session(
     mut browser: Browser,
     port: Option<u16>,
 ) -> Result<Option<crate::model::WindowRect>> {
-    let rect = window::capture_bounds(&browser).await.ok();
+    let rect = crate::with_timeout(window::capture_bounds(&browser), 5, "capture_bounds").await.and_then(Result::ok);
     crate::warn_timeout(browser.close(), 5, "Browser.close").await;
     crate::warn_timeout(browser.wait(), 5, "Browser.wait").await;
     if let Some(port) = port {
