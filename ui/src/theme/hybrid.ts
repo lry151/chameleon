@@ -9,19 +9,25 @@ export function resolveIsDark(
   return mode === "Dark";
 }
 
-/// Hybrid 主题背景策略：
-/// - 深色：半透明暗底（Mica 生效时透出微光；Mica 失败时不露出桌面/白窗）。
-///   纯 transparent 依赖 Mica 一定成功，失败则整窗透出桌面 = 白面板（本 bug 根因）。
-///   0.78 保证最坏情况（白壁纸）下仍是明确深色（≈rgb(72,72,72)），同时给
-///   panel_opacity 控制的半透明面板留下可透出的背衬。
+/// Hybrid 主题背景策略（自适应：以后端检测的 backdrop 能力为准）。
+///
+/// - 深色 + Mica/Acrylic 可用：body 完全透明，让 DWM 真材质透出。
+///   前提：window-vibrancy 已自检系统能渲染 Mica/Acrylic（透明效果开 + DWM 合成开
+///   + Win11/10），不再靠猜。半透明面板由 panel_opacity 驱动，能看到真玻璃。
+/// - 深色 + None（透明效果关 / RDP / 无 DWM / 旧系统）：body 实色暗底 #16181A，
+///   面板不透明。绝不出现透明窗透出桌面 = 白屏（本类 bug 根因）。
 /// - 浅色：body 实色 #F3F3F3（参考 Windows 11 设置应用）。
 export const LIGHT_BG = "#F3F3F3";
-export const DARK_BG = "rgba(20, 20, 20, 0.78)";
+export const DARK_SOLID_BG = "#16181A";
 
-export function applyBodyBackground(isDark: boolean): void {
+/// `backdropCapable` = 后端 detect_backdrop_capability() 是否给出 Mica/Acrylic。
+export function applyBodyBackground(
+  isDark: boolean,
+  backdropCapable: boolean,
+): void {
   const { style } = document.body;
   if (isDark) {
-    style.backgroundColor = DARK_BG;
+    style.backgroundColor = backdropCapable ? "transparent" : DARK_SOLID_BG;
     style.color = "#E8E8E8";
   } else {
     style.backgroundColor = LIGHT_BG;

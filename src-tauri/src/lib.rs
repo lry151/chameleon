@@ -59,6 +59,7 @@ pub struct AppStateView {
     pub snapshots: Vec<String>,
     pub browser_path: Option<String>,
     pub browser_candidates: Vec<BrowserCandidate>,
+    pub backdrop: String,
     pub data_root: String,
 }
 
@@ -93,6 +94,7 @@ async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
         snapshots,
         browser_path: cfg.browser_path.as_ref().map(|p| p.display().to_string()),
         browser_candidates,
+        backdrop: vibrancy::detect_backdrop_capability().as_str().to_string(),
         data_root: cfg.data_root.display().to_string(),
     })
 }

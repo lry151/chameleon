@@ -11,6 +11,7 @@ export const appState = ref<AppStateView>({
   snapshots: [],
   browser_path: null,
   browser_candidates: [],
+  backdrop: "None",
   data_root: "",
 });
 
