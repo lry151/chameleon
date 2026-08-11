@@ -1,7 +1,7 @@
 {
   "name": "chameleon-ui",
   "private": true,
-  "version": "0.5.8",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
