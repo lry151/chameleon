@@ -14,8 +14,12 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useMessage } from "naive-ui";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 import { tauri } from "../composables/useTauri";
+
+const message = useMessage();
 
 const selectedPath = computed(() => appState.value.browser_path ?? null);
 
@@ -31,7 +35,7 @@ async function onSelect(path: string) {
     await tauri.setBrowserPath(path);
     await loadAppState();
   } catch (err) {
-    console.error("Failed to set browser path:", err);
+    notifyBackendError(message, err, "切换浏览器失败");
   }
 }
 
@@ -43,7 +47,7 @@ async function handlePick() {
       await loadAppState();
     }
   } catch (err) {
-    console.error("Failed to pick browser:", err);
+    notifyBackendError(message, err, "选择浏览器失败");
   }
 }
 </script>

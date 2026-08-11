@@ -11,7 +11,7 @@ pub async fn capture_bounds(browser: &Browser) -> Result<WindowRect> {
     let ret = browser
         .execute(GetWindowForTargetParams::default())
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::cdp_operation_failed("capture_bounds", "读取窗口位置失败", e))?;
     let b = &ret.result.bounds;
     let rect = WindowRect {
         x: b.left.unwrap_or(0) as i32,

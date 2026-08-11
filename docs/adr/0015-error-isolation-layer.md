@@ -27,14 +27,14 @@
 
 **净化范围 = `CdpOperation` 6 处 + `build()` 1 处**，不是 issue 列出的三变体全改。
 
-## 3. 净化方式：`message()` 剥离原文，原文只进日志
-
+## 3. 净化方式：源头净化（原文进日志，`detail` 用自洽中文）
+…
 **决议**：
-- `message()` 保持纯函数；`CdpOperation` 剥离 `{detail}` → 固定中文文案（如 "浏览器操作失败，请重试。"），`LaunchFailed` 的 `build()` 分支 detail 同样中文化或剥离。
-- enum 的 `detail` 字段**保留**，供 `Debug` 展示——命令层 `tracing::warn!(error = ?e, …)` 把完整原文写入日志（依赖 #31 的 tracing 栈）。
-- **红线**：CDP 密码嗅探处（login assist 填表）的 detail 不进日志——与 #31 同款红线，凭证侧由 T-CRED 处理，本层不越界。
+- `message()` 保持纯函数；`CdpOperation` 的 `detail` 保留在 `message()` 中（保住 login assist「未找到密码输入框」等**自洽中文**提示）。
+- **原文在源头净化**：新增 `ChameleonError::cdp_operation_failed(ctx, msg, raw)` helper——`raw` 只进日志（`tracing::warn!`），`detail` 用自洽中文。4 处 `e.to_string()` 透传站（`launcher.rs` open_tab / read_active_tab / login_assist / login_assist_link + `window.rs` capture_bounds）全部经此 helper 收口，原文不再进用户面。`LaunchFailed` 的 `build()` 分支同样 `tracing::error!` 记原文 + 中文 detail。
+- **红线**：CDP 密码嗅探处（login assist 填表）的 **password 不进日志**——原始技术错误（连接/协议）可记，凭证字段绝不记；与 #31 同款红线，凭证侧由 T-CRED 处理，本层不越界。
 
-**依赖 #31**：现状零 tracing，剥离即永久丢信息；排序在 ADR-0012 落地之后，riding on 其 tracing 栈。与 #41/#42 同级依赖。
+**依赖 #31**：#31 落地后 tracing 栈可用，原文才真正落入日志；本批 riding on 其 tracing 栈。
 
 ## 4. 前端 catch 策略：一律 `notifyBackendError` 透传后端 `message()`，dev/init 例外
 

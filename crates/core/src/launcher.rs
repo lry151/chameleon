@@ -57,7 +57,10 @@ fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<
             .window_size(rect.width, rect.height)
             .arg(("window-position", pos.as_str()));
     }
-    b.build().map_err(|e| ChameleonError::LaunchFailed { detail: e })
+    b.build().map_err(|e| {
+        tracing::error!(error = %e, "构建浏览器启动参数失败");
+        ChameleonError::LaunchFailed { detail: "构建浏览器启动参数失败，请确认浏览器路径有效。".into() }
+    })
 }
 
 /// 端口是否已被占用（用于判断既有实例是否需要接管）。
@@ -303,7 +306,7 @@ pub async fn open_tab(session: &mut Session, cfg: &GlobalConfig, role_id: &str, 
         .browser
         .new_page(CreateTargetParams::new(url))
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::cdp_operation_failed("open_tab", "打开新标签页失败", e))?;
     let id = page.target_id().clone();
     crate::warn_err(page.activate().await, "open_tab page.activate 失败");
     run.active_page = Some(id);
@@ -327,7 +330,7 @@ pub async fn read_active_tab(session: &Session, role_id: &str) -> Result<String>
         .browser
         .pages()
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::cdp_operation_failed("read_active_tab", "读取标签页列表失败", e))?;
     for page in pages.into_iter().rev() {
         if let Ok(Some(url)) = page.url().await {
             if !url.is_empty() && url != "about:blank" {
@@ -426,7 +429,7 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
         .browser
         .new_page(CreateTargetParams::new(&login.login_url))
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::cdp_operation_failed("login_assist", "打开登录页失败", e))?;
     let id = page.target_id().clone();
     crate::warn_err(page.activate().await, "login_assist page.activate 失败");
     run.active_page = Some(id);
@@ -479,7 +482,7 @@ pub async fn login_assist_link(
         .browser
         .new_page(CreateTargetParams::new(url))
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::cdp_operation_failed("login_assist_link", "打开登录页失败", e))?;
     let id = page.target_id().clone();
     crate::warn_err(page.activate().await, "login_assist_link page.activate 失败");
     run.active_page = Some(id);

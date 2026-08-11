@@ -91,6 +91,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from "vue";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 import { tauri } from "../composables/useTauri";
 import { useMessage } from "naive-ui";
 import { prefs, savePrefs } from "../composables/usePrefs";
@@ -119,7 +120,7 @@ async function onSelectBrowser(path: string) {
     await loadAppState();
     message.success("浏览器已切换");
   } catch (err) {
-    message.error("切换浏览器失败");
+    notifyBackendError(message, err, "切换浏览器失败");
   }
 }
 
@@ -132,7 +133,7 @@ async function handlePickBrowser() {
       message.success("浏览器已切换");
     }
   } catch (err) {
-    message.error("选择浏览器失败");
+    notifyBackendError(message, err, "选择浏览器失败");
   }
 }
 
@@ -140,7 +141,7 @@ async function handleOpenLogFolder() {
   try {
     await tauri.openLogFolder();
   } catch (err) {
-    message.error("打开日志文件夹失败");
+    notifyBackendError(message, err, "打开日志文件夹失败");
   }
 }
 

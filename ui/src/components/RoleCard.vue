@@ -249,7 +249,7 @@ async function handleClose() {
     triggerPulse();
     await loadAppState();
   } catch (err) {
-    message.error(`关闭「${props.role.name}」失败，请稍后重试`);
+    notifyBackendError(message, err, `关闭「${props.role.name}」失败`);
   } finally {
     busy.value = false;
   }
@@ -269,7 +269,7 @@ async function doDelete() {
     await loadAppState();
     emit("deleted");
   } catch (err) {
-    message.error(`删除角色「${props.role.name}」失败`);
+    notifyBackendError(message, err, `删除角色「${props.role.name}」失败`);
   } finally {
     busy.value = false;
   }

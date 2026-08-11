@@ -43,8 +43,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
-import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
+import { tauri } from "../composables/useTauri";
 
 const props = defineProps<{
   show: boolean;
@@ -102,7 +103,7 @@ async function handleSave() {
     emit("saved");
     emit("update:show", false);
   } catch (err) {
-    message.error("保存系统失败，请稍后重试");
+    notifyBackendError(message, err, "保存系统失败");
     saving.value = false;
   }
 }

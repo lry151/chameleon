@@ -147,6 +147,7 @@ import { useMessage } from "naive-ui";
 import type { QuickLink, QuickLinkLogin } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 
 const props = defineProps<{
   show: boolean;
@@ -307,7 +308,7 @@ async function handleSubmit() {
     await loadAppState();
     message.success("预设已保存");
   } catch (err) {
-    message.error("保存预设失败，请稍后重试");
+    notifyBackendError(message, err, "保存预设失败");
   } finally {
     submitting.value = false;
   }
@@ -326,7 +327,7 @@ async function doRemove(name: string) {
       resetForm();
     }
   } catch (err) {
-    message.error("删除预设失败");
+    notifyBackendError(message, err, "删除预设失败");
   }
 }
 
@@ -375,7 +376,7 @@ async function handleTestLogin() {
     editingName.value = name;
     await tauri.openQuickLink(props.ownerId, name);
   } catch (err) {
-    message.error("测试登录失败，请检查选择器是否正确");
+    notifyBackendError(message, err, "测试登录失败");
   } finally {
     testingLogin.value = false;
   }

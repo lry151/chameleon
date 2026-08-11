@@ -69,6 +69,7 @@ import { useMessage } from "naive-ui";
 import type { HandoffMode, RoleView } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { appState, loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 
 const props = defineProps<{
   show: boolean;
@@ -118,8 +119,8 @@ async function handleSubmit() {
     message.success(`接力完成，已打开「${targetRole?.name ?? ""}」`);
     emit("done");
     emit("update:show", false);
-  } catch (err: any) {
-    message.error(`接力失败：${err?.message ?? err}`);
+  } catch (err) {
+    notifyBackendError(message, err, "接力失败");
     submitting.value = false;
   }
 }
