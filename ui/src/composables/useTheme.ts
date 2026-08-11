@@ -1,5 +1,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { prefs } from "./usePrefs";
+import { appState } from "./useAppState";
 import { applyBodyBackground, resolveIsDark } from "../theme/hybrid";
 import { buildFluentThemeOverride } from "../theme/fluent";
 import { type GlobalThemeOverrides, darkTheme } from "naive-ui";
@@ -37,6 +38,10 @@ export function useTheme() {
     resolveIsDark(prefs.value.theme, systemIsDark.value),
   );
 
+  /// 后端 detect_backdrop_capability() 是否给出真材质能力（Mica/Acrylic）。
+  /// 深色模式下：capable → body 透明 + 半透面板（真玻璃）；None → 实色暗底 + 不透明面板。
+  const backdropCapable = computed(() => appState.value.backdrop !== "None");
+
   const naiveTheme = computed(() => (isDark.value ? darkTheme : null));
 
   const fluentOverride = computed<GlobalThemeOverrides>(() =>
@@ -44,16 +49,21 @@ export function useTheme() {
       prefs.value.accent_color,
       isDark.value,
       prefs.value.panel_opacity,
+      backdropCapable.value,
     ),
   );
-
-  // 外壳背景策略：深色让 Mica 透出 + Topbar 轻微暗 tint；浅色全实色。
-  // panel_opacity 控制深色 tint 强度（0.5–1.0）。
-  // dark 变化时同步 body 文字/背景色，否则切换到深色后自定义文本(顶栏/窗口控制)仍是浅色主题的深字，在深底上不可见。
+  // 外壳背景策略（自适应 backdrop 能力）：
+  // - capable + 深色 → body 透明，DWM 真材质透出；topbar 轻微暗 tint；面板半透明（panel_opacity 驱动）。
+  // - None 深色 → body 实色暗底（#16181A），面板不透明。绝不白屏。
+  // - 浅色 → 全实色 #F3F3F3。
   watch(
-    () => ({ dark: isDark.value, opacity: prefs.value.panel_opacity }),
-    ({ dark, opacity }) => {
-      applyBodyBackground(dark);
+    () => ({
+      dark: isDark.value,
+      opacity: prefs.value.panel_opacity,
+      backdrop: backdropCapable.value,
+    }),
+    ({ dark, opacity, backdrop }) => {
+      applyBodyBackground(dark, backdrop);
       const root = document.documentElement.style;
       if (dark) {
         root.setProperty(

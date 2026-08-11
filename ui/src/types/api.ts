@@ -91,6 +91,9 @@ export interface BrowserCandidate {
   path: string;
 }
 
+/// 运行时检测的背景材质能力（后端 vibrancy 自检）。
+export type BackdropKind = "Mica" | "Acrylic" | "None";
+
 /// get_state 返回的完整应用状态。
 export interface AppStateView {
   roles: RoleView[];
@@ -99,5 +102,6 @@ export interface AppStateView {
   snapshots: string[];
   browser_path: string | null;
   browser_candidates: BrowserCandidate[];
+  backdrop: BackdropKind;
   data_root: string;
 }
