@@ -28,14 +28,19 @@ impl ConfigStore {
         if !self.path.exists() {
             // 首次运行：Default 用廉价的 app_dir()/data；覆盖为可写性探优的
             // default_data_root()——装在 Program Files 时回落到 per-user 目录，避免不可写。
-            let mut cfg = GlobalConfig::default();
-            cfg.data_root = default_data_root();
+            let cfg = GlobalConfig {
+                data_root: default_data_root(),
+                ..Default::default()
+            };
             return Ok(cfg);
         }
-        let raw = fs::read_to_string(&self.path)
-            .map_err(|e| ChameleonError::ConfigRead { detail: e.to_string() })?;
-        let mut cfg: GlobalConfig = serde_json::from_str(&raw)
-            .map_err(|e| ChameleonError::ConfigInvalid { detail: e.to_string() })?;
+        let raw = fs::read_to_string(&self.path).map_err(|e| ChameleonError::ConfigRead {
+            detail: e.to_string(),
+        })?;
+        let mut cfg: GlobalConfig =
+            serde_json::from_str(&raw).map_err(|e| ChameleonError::ConfigInvalid {
+                detail: e.to_string(),
+            })?;
         absolutize_paths(&mut cfg);
         safety::validate_config(&cfg)?;
         Ok(cfg)
@@ -45,21 +50,27 @@ impl ConfigStore {
     pub fn save(&self, cfg: &GlobalConfig) -> Result<()> {
         safety::validate_config(cfg)?;
         if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
+            fs::create_dir_all(parent).map_err(|e| ChameleonError::ConfigWrite {
+                detail: e.to_string(),
+            })?;
         }
-        let raw = serde_json::to_string_pretty(cfg)
-            .map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
+        let raw = serde_json::to_string_pretty(cfg).map_err(|e| ChameleonError::ConfigWrite {
+            detail: e.to_string(),
+        })?;
         let tmp = self.path.with_extension("json.tmp");
         {
-            let mut f = fs::File::create(&tmp)
-                .map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
+            let mut f = fs::File::create(&tmp).map_err(|e| ChameleonError::ConfigWrite {
+                detail: e.to_string(),
+            })?;
             f.write_all(raw.as_bytes())
                 .and_then(|_| f.sync_all())
-                .map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
+                .map_err(|e| ChameleonError::ConfigWrite {
+                    detail: e.to_string(),
+                })?;
         }
-        fs::rename(&tmp, &self.path)
-            .map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
+        fs::rename(&tmp, &self.path).map_err(|e| ChameleonError::ConfigWrite {
+            detail: e.to_string(),
+        })?;
         Ok(())
     }
 
@@ -67,7 +78,9 @@ impl ConfigStore {
     /// 数据目录默认落在数据根目录下 `data_root/<name>`。
     pub fn create_role(&self, cfg: &mut GlobalConfig, name: String, color: String) -> Result<Role> {
         if name.trim().is_empty() {
-            return Err(ChameleonError::ConfigInvalid { detail: "角色名称不能为空".into() });
+            return Err(ChameleonError::ConfigInvalid {
+                detail: "角色名称不能为空".into(),
+            });
         }
         if cfg.roles.iter().any(|r| r.name == name) {
             return Err(ChameleonError::DuplicateName { name });
@@ -101,7 +114,9 @@ impl ConfigStore {
     /// 创建系统。
     pub fn create_system(&self, cfg: &mut GlobalConfig, name: String) -> Result<System> {
         if name.trim().is_empty() {
-            return Err(ChameleonError::ConfigInvalid { detail: "系统名称不能为空".into() });
+            return Err(ChameleonError::ConfigInvalid {
+                detail: "系统名称不能为空".into(),
+            });
         }
         if cfg.systems.iter().any(|s| s.name == name) {
             return Err(ChameleonError::DuplicateName { name });
@@ -115,7 +130,11 @@ impl ConfigStore {
     pub fn update_system(&self, cfg: &mut GlobalConfig, system: System) -> Result<()> {
         match cfg.systems.iter_mut().find(|s| s.id == system.id) {
             Some(slot) => *slot = system,
-            None => return Err(ChameleonError::ConfigInvalid { detail: "系统不存在".into() }),
+            None => {
+                return Err(ChameleonError::ConfigInvalid {
+                    detail: "系统不存在".into(),
+                })
+            }
         }
         self.save(cfg)
     }
@@ -124,7 +143,9 @@ impl ConfigStore {
         let before = cfg.systems.len();
         cfg.systems.retain(|s| s.id != id);
         if cfg.systems.len() == before {
-            return Err(ChameleonError::ConfigInvalid { detail: "系统不存在".into() });
+            return Err(ChameleonError::ConfigInvalid {
+                detail: "系统不存在".into(),
+            });
         }
         // 解除角色的系统归属（角色保留，变为未分组）
         for r in &mut cfg.roles {
@@ -228,9 +249,13 @@ mod tests {
     fn save_and_load_roundtrip() {
         let dir = tempdir().unwrap();
         let store = ConfigStore::new(dir.path().join("config.json"));
-        let mut cfg = GlobalConfig::default();
-        cfg.data_root = dir.path().join("data");
-        let role = store.create_role(&mut cfg, "ERP-管理员".into(), "#e74c3c".into()).unwrap();
+        let mut cfg = GlobalConfig {
+            data_root: dir.path().join("data"),
+            ..Default::default()
+        };
+        let role = store
+            .create_role(&mut cfg, "ERP-管理员".into(), "#e74c3c".into())
+            .unwrap();
         assert_eq!(role.name, "ERP-管理员");
         drop(store);
 
@@ -253,12 +278,20 @@ mod tests {
         let store = ConfigStore::new(dir.path().join("config.json"));
 
         let mut cfg = store.load().unwrap(); // 不落盘的首次默认
-        assert!(cfg.data_root.is_absolute(),
-            "data_root 必须绝对，实为 {:?}", cfg.data_root);
+        assert!(
+            cfg.data_root.is_absolute(),
+            "data_root 必须绝对，实为 {:?}",
+            cfg.data_root
+        );
 
-        let role = store.create_role(&mut cfg, "admin".into(), "#fff".into()).unwrap();
-        assert!(role.profile_dir.is_absolute(),
-            "profile_dir 必须绝对，实为 {:?}", role.profile_dir);
+        let role = store
+            .create_role(&mut cfg, "admin".into(), "#fff".into())
+            .unwrap();
+        assert!(
+            role.profile_dir.is_absolute(),
+            "profile_dir 必须绝对，实为 {:?}",
+            role.profile_dir
+        );
     }
 
     #[test]
@@ -266,7 +299,11 @@ mod tests {
         // exe 目录可写（便携/U 盘/普通文件夹）→ 基准落 exe 目录，data_root = exe/data。
         let dir = tempdir().unwrap();
         let base = data_base_for(dir.path());
-        assert!(base.as_path() == dir.path(), "便携基准应=exe 目录，实为 {:?}", base);
+        assert!(
+            base.as_path() == dir.path(),
+            "便携基准应=exe 目录，实为 {:?}",
+            base
+        );
         assert_eq!(base.join("data"), dir.path().join("data"));
     }
 
@@ -279,19 +316,29 @@ mod tests {
         fs::write(&file_as_exe_dir, b"x").unwrap();
         let base = data_base_for(&file_as_exe_dir);
         assert!(base.is_absolute(), "回落后基准须绝对，实为 {:?}", base);
-        assert!(!base.starts_with(&file_as_exe_dir),
-            "不应留在不可写的 exe 位置，实为 {:?}", base);
-        assert!(base.ends_with("chameleon"),
-            "应回落到 per-user 下的 chameleon，实为 {:?}", base);
+        assert!(
+            !base.starts_with(&file_as_exe_dir),
+            "不应留在不可写的 exe 位置，实为 {:?}",
+            base
+        );
+        assert!(
+            base.ends_with("chameleon"),
+            "应回落到 per-user 下的 chameleon，实为 {:?}",
+            base
+        );
     }
 
     #[test]
     fn duplicate_name_rejected() {
         let dir = tempdir().unwrap();
         let store = ConfigStore::new(dir.path().join("config.json"));
-        let mut cfg = GlobalConfig::default();
-        cfg.data_root = dir.path().join("data");
-        store.create_role(&mut cfg, "管理员".into(), "#fff".into()).unwrap();
+        let mut cfg = GlobalConfig {
+            data_root: dir.path().join("data"),
+            ..Default::default()
+        };
+        store
+            .create_role(&mut cfg, "管理员".into(), "#fff".into())
+            .unwrap();
         assert!(matches!(
             store.create_role(&mut cfg, "管理员".into(), "#000".into()),
             Err(ChameleonError::DuplicateName { .. })
@@ -302,12 +349,16 @@ mod tests {
     fn system_crud() {
         let dir = tempdir().unwrap();
         let store = ConfigStore::new(dir.path().join("config.json"));
-        let mut cfg = GlobalConfig::default();
-        cfg.data_root = dir.path().join("data");
+        let mut cfg = GlobalConfig {
+            data_root: dir.path().join("data"),
+            ..Default::default()
+        };
         let sys = store.create_system(&mut cfg, "ERP系统".into()).unwrap();
         assert_eq!(cfg.systems.len(), 1);
         // 角色挂系统
-        let mut role = store.create_role(&mut cfg, "管理员".into(), "#e74c3c".into()).unwrap();
+        let mut role = store
+            .create_role(&mut cfg, "管理员".into(), "#e74c3c".into())
+            .unwrap();
         role.system_id = Some(sys.id.clone());
         store.update_role(&mut cfg, role.clone()).unwrap();
         // 删除系统 → 角色解绑但保留
@@ -387,21 +438,29 @@ mod tests {
         }"##;
         fs::write(&path, poisoned).unwrap();
         let cfg = ConfigStore::new(&path).load().unwrap();
-        assert!(cfg.data_root.is_absolute(),
-            "data_root 愈合后须绝对，实为 {:?}", cfg.data_root);
-        assert!(cfg.roles[0].profile_dir.is_absolute(),
-            "profile_dir 愈合后须绝对，实为 {:?}", cfg.roles[0].profile_dir);
+        assert!(
+            cfg.data_root.is_absolute(),
+            "data_root 愈合后须绝对，实为 {:?}",
+            cfg.data_root
+        );
+        assert!(
+            cfg.roles[0].profile_dir.is_absolute(),
+            "profile_dir 愈合后须绝对，实为 {:?}",
+            cfg.roles[0].profile_dir
+        );
     }
 
     #[test]
     fn ui_preferences_persisted_across_save_load() {
         let dir = tempdir().unwrap();
         let store = ConfigStore::new(dir.path().join("config.json"));
-        let mut cfg = GlobalConfig::default();
-        cfg.ui_preferences = UiPreferences {
-            theme: ThemeMode::System,
-            panel_opacity: 0.6,
-            accent_color: "#e74c3c".into(),
+        let cfg = GlobalConfig {
+            ui_preferences: UiPreferences {
+                theme: ThemeMode::System,
+                panel_opacity: 0.6,
+                accent_color: "#e74c3c".into(),
+            },
+            ..Default::default()
         };
         store.save(&cfg).unwrap();
         let loaded = store.load().unwrap();

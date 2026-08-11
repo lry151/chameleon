@@ -33,11 +33,7 @@ pub enum VibrancyPlan {
 /// - 有效主题 = 浅色 → `Clear`（不论 OS）。
 /// - 有效主题 = 深色 + Win11 → `Mica`。
 /// - 有效主题 = 深色 + Win10/其他 → `AcrylicDark`。
-pub fn plan_vibrancy(
-    theme: ThemeMode,
-    system_is_light: bool,
-    os: OsFlavor,
-) -> VibrancyPlan {
+pub fn plan_vibrancy(theme: ThemeMode, system_is_light: bool, os: OsFlavor) -> VibrancyPlan {
     let effective_dark = match theme {
         ThemeMode::Dark => true,
         ThemeMode::Light => false,
@@ -172,24 +168,16 @@ fn dwm_composition_enabled() -> bool {
 /// 读 `HKCU\…\Themes\Personalize` 下的 DWORD 值。
 #[cfg(target_os = "windows")]
 fn read_personalize_dword(value_name: windows::core::PCWSTR) -> Option<u32> {
+    use windows::core::w;
     use windows::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
         REG_VALUE_TYPE,
     };
-    use windows::core::w;
 
     let sub_key = w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
 
-let mut key = HKEY::default();
-    let result = unsafe {
-        RegOpenKeyExW(
-            HKEY_CURRENT_USER,
-            sub_key,
-            Some(0),
-            KEY_READ,
-            &mut key,
-        )
-    };
+    let mut key = HKEY::default();
+    let result = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, sub_key, Some(0), KEY_READ, &mut key) };
     if result.is_err() {
         return None;
     }
@@ -207,7 +195,9 @@ let mut key = HKEY::default();
             Some(&mut size),
         )
     };
-    unsafe { let _ = RegCloseKey(key); }
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
     if result.is_err() {
         return None;
     }
@@ -222,8 +212,9 @@ pub fn apply(window: &tauri::WebviewWindow, plan: VibrancyPlan) -> Result<(), St
         // 先清空：避免旧 vibrancy 残留与新 plan 叠加。
         let _ = clear_vibrancy(window);
         match plan {
-            VibrancyPlan::Mica => apply_mica(window, None)
-                .map_err(|e| format!("apply_mica 失败: {e}")),
+            VibrancyPlan::Mica => {
+                apply_mica(window, None).map_err(|e| format!("apply_mica 失败: {e}"))
+            }
             VibrancyPlan::AcrylicDark => apply_acrylic(window, Some((33, 31, 41, 180)))
                 .map_err(|e| format!("apply_acrylic 失败: {e}")),
             VibrancyPlan::Clear => Ok(()),
@@ -322,10 +313,7 @@ mod tests {
     fn backdrop_transparency_off_collapses_to_none_even_on_win11() {
         // 系统透明效果关闭 → Mica/Acrylic 不渲染 → 实色，不论 OS
         for os in [OsFlavor::Win11Plus, OsFlavor::Win10] {
-            assert_eq!(
-                decide_backdrop(os, false, true),
-                BackdropCapability::None
-            );
+            assert_eq!(decide_backdrop(os, false, true), BackdropCapability::None);
         }
     }
 
@@ -333,10 +321,7 @@ mod tests {
     fn backdrop_no_dwm_composition_collapses_to_none() {
         // RDP 基础主题 / 无合成器 → 实色
         for os in [OsFlavor::Win11Plus, OsFlavor::Win10] {
-            assert_eq!(
-                decide_backdrop(os, true, false),
-                BackdropCapability::None
-            );
+            assert_eq!(decide_backdrop(os, true, false), BackdropCapability::None);
         }
     }
 

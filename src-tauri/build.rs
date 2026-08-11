@@ -63,6 +63,9 @@ fn stage_webview2_loader() -> std::io::Result<()> {
     fs::create_dir_all(profile_dir).ok();
     let dest = profile_dir.join("WebView2Loader.dll");
     fs::copy(&dll, &dest)?;
-    println!("cargo:warning=已放置 WebView2Loader.dll -> {}", dest.display());
+    println!(
+        "cargo:warning=已放置 WebView2Loader.dll -> {}",
+        dest.display()
+    );
     Ok(())
 }

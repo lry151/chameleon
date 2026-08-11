@@ -7,8 +7,8 @@ use crate::launcher;
 use crate::model::{GlobalConfig, Snapshot, SnapshotRole};
 use crate::session::Session;
 use crate::window;
-use chrono::Utc;
 use chromiumoxide_cdp::cdp::browser_protocol::target::TargetId;
+use chrono::Utc;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -39,10 +39,13 @@ impl SnapshotStore {
         name: &str,
     ) -> Result<()> {
         if name.trim().is_empty() {
-            return Err(ChameleonError::ConfigInvalid { detail: "快照名称不能为空".into() });
+            return Err(ChameleonError::ConfigInvalid {
+                detail: "快照名称不能为空".into(),
+            });
         }
-        fs::create_dir_all(&self.dir)
-            .map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?;
+        fs::create_dir_all(&self.dir).map_err(|e| ChameleonError::SnapshotWrite {
+            detail: e.to_string(),
+        })?;
         let mut roles = Vec::new();
         for role in &cfg.roles {
             let running = session.roles.contains_key(&role.id);
@@ -69,10 +72,13 @@ impl SnapshotStore {
             created_at: Utc::now().to_rfc3339(),
             roles,
         };
-        let raw = serde_json::to_string_pretty(&snap)
-            .map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?;
-        fs::write(self.path_for(name), raw)
-            .map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?;
+        let raw =
+            serde_json::to_string_pretty(&snap).map_err(|e| ChameleonError::SnapshotWrite {
+                detail: e.to_string(),
+            })?;
+        fs::write(self.path_for(name), raw).map_err(|e| ChameleonError::SnapshotWrite {
+            detail: e.to_string(),
+        })?;
         store.save(cfg)?;
         Ok(())
     }
@@ -83,11 +89,18 @@ impl SnapshotStore {
             return Ok(Vec::new());
         }
         let mut names = Vec::new();
-        for entry in fs::read_dir(&self.dir)
-            .map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?
-        {
-            let entry = entry.map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?;
-            if entry.path().extension().map(|e| e == "json").unwrap_or(false) {
+        for entry in fs::read_dir(&self.dir).map_err(|e| ChameleonError::SnapshotWrite {
+            detail: e.to_string(),
+        })? {
+            let entry = entry.map_err(|e| ChameleonError::SnapshotWrite {
+                detail: e.to_string(),
+            })?;
+            if entry
+                .path()
+                .extension()
+                .map(|e| e == "json")
+                .unwrap_or(false)
+            {
                 if let Some(stem) = entry.path().file_stem().and_then(|s| s.to_str()) {
                     names.push(stem.to_string());
                 }
@@ -107,8 +120,10 @@ impl SnapshotStore {
     ) -> Result<()> {
         let raw = fs::read_to_string(self.path_for(name))
             .map_err(|_| ChameleonError::SnapshotNotFound { name: name.into() })?;
-        let snap: Snapshot = serde_json::from_str(&raw)
-            .map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?;
+        let snap: Snapshot =
+            serde_json::from_str(&raw).map_err(|e| ChameleonError::SnapshotWrite {
+                detail: e.to_string(),
+            })?;
         for sr in &snap.roles {
             let role = cfg
                 .roles
@@ -150,7 +165,9 @@ impl SnapshotStore {
         if !p.exists() {
             return Err(ChameleonError::SnapshotNotFound { name: name.into() });
         }
-        fs::remove_file(p).map_err(|e| ChameleonError::SnapshotWrite { detail: e.to_string() })?;
+        fs::remove_file(p).map_err(|e| ChameleonError::SnapshotWrite {
+            detail: e.to_string(),
+        })?;
         Ok(())
     }
 }
@@ -159,7 +176,13 @@ impl SnapshotStore {
 fn sanitize_name(name: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let trimmed = cleaned.trim_matches('-');
     if trimmed.is_empty() {

@@ -76,12 +76,18 @@ async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
     let roles = cfg
         .roles
         .iter()
-        .map(|r| RoleView { role: r.clone(), running: session.is_role_running(&r.id) })
+        .map(|r| RoleView {
+            role: r.clone(),
+            running: session.is_role_running(&r.id),
+        })
         .collect();
     let sandboxes = session
         .sandboxes
         .values()
-        .map(|s| sandbox::SandboxInfo { id: s.id.clone(), dir: s.dir.clone() })
+        .map(|s| sandbox::SandboxInfo {
+            id: s.id.clone(),
+            dir: s.dir.clone(),
+        })
         .collect();
     drop(session);
     let snapshots = state.snapshots().list().unwrap_or_default();
@@ -102,7 +108,11 @@ async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
 /// —— 角色管理 ——
 
 #[tauri::command]
-async fn create_role(state: State<'_, AppState>, name: String, color: String) -> Result<Role, String> {
+async fn create_role(
+    state: State<'_, AppState>,
+    name: String,
+    color: String,
+) -> Result<Role, String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     store.create_role(&mut cfg, name, color).map_err(msg)
@@ -157,7 +167,12 @@ async fn delete_system_with_roles(state: State<'_, AppState>, id: String) -> Res
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     // 收集待删角色 ID（在 delete_system 解除关联前）
-    let role_ids: Vec<String> = cfg.roles.iter().filter(|r| r.system_id.as_deref() == Some(&id)).map(|r| r.id.clone()).collect();
+    let role_ids: Vec<String> = cfg
+        .roles
+        .iter()
+        .filter(|r| r.system_id.as_deref() == Some(&id))
+        .map(|r| r.id.clone())
+        .collect();
     // 先删除系统
     store.delete_system(&mut cfg, &id).map_err(msg)?;
     // 逐个删除角色
@@ -173,10 +188,17 @@ async fn delete_system_with_roles(state: State<'_, AppState>, id: String) -> Res
 async fn launch_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
-    let role = cfg.roles.iter().find(|r| r.id == id).cloned().ok_or_else(|| msg(ChameleonError::RoleNotFound { id: id.clone() }))?;
+    let role = cfg
+        .roles
+        .iter()
+        .find(|r| r.id == id)
+        .cloned()
+        .ok_or_else(|| msg(ChameleonError::RoleNotFound { id: id.clone() }))?;
     let mut session = state.session.lock().await;
     launcher::prune_dead_roles(&mut session).await;
-    launcher::launch_role(&mut session, &cfg, &role, true).await.map_err(msg)
+    launcher::launch_role(&mut session, &cfg, &role, true)
+        .await
+        .map_err(msg)
 }
 
 #[tauri::command]
@@ -189,7 +211,9 @@ async fn close_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), St
     if !session.is_role_running(&id) {
         return Ok(());
     }
-    launcher::close_role(&mut session, &store, &mut cfg, &id).await.map_err(msg)
+    launcher::close_role(&mut session, &store, &mut cfg, &id)
+        .await
+        .map_err(msg)
 }
 
 #[tauri::command]
@@ -200,19 +224,29 @@ async fn launch_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
 }
 
 #[tauri::command]
-async fn launch_system(state: State<'_, AppState>, system_id: String) -> Result<BatchResult, String> {
+async fn launch_system(
+    state: State<'_, AppState>,
+    system_id: String,
+) -> Result<BatchResult, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
     Ok(chameleon_core::batch::start_system(state.session.clone(), &cfg, &system_id).await)
 }
 
 #[tauri::command]
-async fn close_system(state: State<'_, AppState>, system_id: String) -> Result<BatchResult, String> {
+async fn close_system(
+    state: State<'_, AppState>,
+    system_id: String,
+) -> Result<BatchResult, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
     Ok(chameleon_core::batch::close_system(
-        state.session.clone(), store, Arc::new(tokio::sync::Mutex::new(cfg)), &system_id,
-    ).await)
+        state.session.clone(),
+        store,
+        Arc::new(tokio::sync::Mutex::new(cfg)),
+        &system_id,
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -220,8 +254,11 @@ async fn close_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
     Ok(chameleon_core::batch::close_all(
-        state.session.clone(), store, Arc::new(tokio::sync::Mutex::new(cfg)),
-    ).await)
+        state.session.clone(),
+        store,
+        Arc::new(tokio::sync::Mutex::new(cfg)),
+    )
+    .await)
 }
 
 /// —— 登录辅助 ——
@@ -232,13 +269,19 @@ async fn login_assist_cmd(state: State<'_, AppState>, role_id: String) -> Result
     let cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
     launcher::prune_dead_roles(&mut session).await;
-    launcher::login_assist(&mut session, &cfg, &role_id).await.map_err(msg)
+    launcher::login_assist(&mut session, &cfg, &role_id)
+        .await
+        .map_err(msg)
 }
 
 /// —— 角色登录配置 ——
 
 #[tauri::command]
-async fn set_role_login(state: State<'_, AppState>, role_id: String, login: Option<LoginConfig>) -> Result<(), String> {
+async fn set_role_login(
+    state: State<'_, AppState>,
+    role_id: String,
+    login: Option<LoginConfig>,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     if let Some(slot) = cfg.roles.iter_mut().find(|r| r.id == role_id) {
@@ -270,51 +313,99 @@ async fn handoff_cmd(
 /// —— 常用 URL 预设（角色级 + 系统级） ——
 
 #[tauri::command]
-async fn add_quick_link(state: State<'_, AppState>, role_id: String, name: String, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
+async fn add_quick_link(
+    state: State<'_, AppState>,
+    role_id: String,
+    name: String,
+    url: String,
+    auto_open: bool,
+    login: Option<QuickLinkLogin>,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     quicklinks::add(&store, &mut cfg, &role_id, &name, &url, auto_open, login).map_err(msg)
 }
 
 #[tauri::command]
-async fn edit_quick_link(state: State<'_, AppState>, role_id: String, old_name: String, name: String, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
+async fn edit_quick_link(
+    state: State<'_, AppState>,
+    role_id: String,
+    old_name: String,
+    name: String,
+    url: String,
+    auto_open: bool,
+    login: Option<QuickLinkLogin>,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::edit(&store, &mut cfg, &role_id, &old_name, &name, &url, auto_open, login).map_err(msg)
+    quicklinks::edit(
+        &store, &mut cfg, &role_id, &old_name, &name, &url, auto_open, login,
+    )
+    .map_err(msg)
 }
 
 #[tauri::command]
-async fn remove_quick_link(state: State<'_, AppState>, role_id: String, name: String) -> Result<(), String> {
+async fn remove_quick_link(
+    state: State<'_, AppState>,
+    role_id: String,
+    name: String,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     quicklinks::remove(&store, &mut cfg, &role_id, &name).map_err(msg)
 }
 
 #[tauri::command]
-async fn open_quick_link(state: State<'_, AppState>, role_id: String, name: String) -> Result<String, String> {
+async fn open_quick_link(
+    state: State<'_, AppState>,
+    role_id: String,
+    name: String,
+) -> Result<String, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
     launcher::prune_dead_roles(&mut session).await;
-    quicklinks::open(&mut session, &cfg, &role_id, &name).await.map_err(msg)
+    quicklinks::open(&mut session, &cfg, &role_id, &name)
+        .await
+        .map_err(msg)
 }
 
 #[tauri::command]
-async fn add_system_quick_link(state: State<'_, AppState>, system_id: String, name: String, url: String, auto_open: bool) -> Result<(), String> {
+async fn add_system_quick_link(
+    state: State<'_, AppState>,
+    system_id: String,
+    name: String,
+    url: String,
+    auto_open: bool,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     quicklinks::add_system(&store, &mut cfg, &system_id, &name, &url, auto_open).map_err(msg)
 }
 
 #[tauri::command]
-async fn edit_system_quick_link(state: State<'_, AppState>, system_id: String, old_name: String, name: String, url: String, auto_open: bool) -> Result<(), String> {
+async fn edit_system_quick_link(
+    state: State<'_, AppState>,
+    system_id: String,
+    old_name: String,
+    name: String,
+    url: String,
+    auto_open: bool,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::edit_system(&store, &mut cfg, &system_id, &old_name, &name, &url, auto_open).map_err(msg)
+    quicklinks::edit_system(
+        &store, &mut cfg, &system_id, &old_name, &name, &url, auto_open,
+    )
+    .map_err(msg)
 }
 
 #[tauri::command]
-async fn remove_system_quick_link(state: State<'_, AppState>, system_id: String, name: String) -> Result<(), String> {
+async fn remove_system_quick_link(
+    state: State<'_, AppState>,
+    system_id: String,
+    name: String,
+) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     quicklinks::remove_system(&store, &mut cfg, &system_id, &name).map_err(msg)
@@ -375,7 +466,10 @@ async fn set_ui_preferences(
 /// —— 配置导出 / 导入 ——
 
 #[tauri::command]
-async fn export_config_cmd(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<String>, String> {
+async fn export_config_cmd(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
     let cfg = state.store().load().map_err(msg)?;
     let picked = app
         .dialog()
@@ -385,13 +479,18 @@ async fn export_config_cmd(app: tauri::AppHandle, state: State<'_, AppState>) ->
         .add_filter("JSON", &["json"])
         .blocking_save_file();
     let Some(fp) = picked else { return Ok(None) };
-    let dest = fp.into_path().map_err(|_| "所选保存路径无效。".to_string())?;
+    let dest = fp
+        .into_path()
+        .map_err(|_| "所选保存路径无效。".to_string())?;
     export::export_config(&cfg, &dest).map_err(msg)?;
     Ok(Some(dest.display().to_string()))
 }
 
 #[tauri::command]
-async fn import_config_cmd(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<usize, String> {
+async fn import_config_cmd(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
     let picked = app
         .dialog()
         .file()
@@ -399,7 +498,9 @@ async fn import_config_cmd(app: tauri::AppHandle, state: State<'_, AppState>) ->
         .add_filter("JSON", &["json"])
         .blocking_pick_file();
     let Some(fp) = picked else { return Ok(0) };
-    let src = fp.into_path().map_err(|_| "所选文件路径无效。".to_string())?;
+    let src = fp
+        .into_path()
+        .map_err(|_| "所选文件路径无效。".to_string())?;
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
     export::import_config(&store, &mut cfg, &src).map_err(msg)
@@ -414,7 +515,11 @@ async fn save_snapshot(state: State<'_, AppState>, name: String) -> Result<(), S
     let mut session = state.session.lock().await;
     // 先清理死角色：否则 list_tab_urls 会拿到空 Vec，快照静默丢失该角色的所有页签 URL。
     launcher::prune_dead_roles(&mut session).await;
-    state.snapshots().save(&mut session, &store, &mut cfg, &name).await.map_err(msg)
+    state
+        .snapshots()
+        .save(&mut session, &store, &mut cfg, &name)
+        .await
+        .map_err(msg)
 }
 
 #[tauri::command]
@@ -430,7 +535,11 @@ async fn restore_snapshot(state: State<'_, AppState>, name: String) -> Result<()
     // 先清理死角色：否则 launch_role 的幂等守卫对死条目返回 Ok，
     // 后续 open_tab/close_other_tabs 在死 Browser 上挂起或报错。
     launcher::prune_dead_roles(&mut session).await;
-    state.snapshots().restore(&mut session, &store, &mut cfg, &name).await.map_err(msg)
+    state
+        .snapshots()
+        .restore(&mut session, &store, &mut cfg, &name)
+        .await
+        .map_err(msg)
 }
 
 #[tauri::command]
@@ -457,7 +566,9 @@ async fn close_sandbox(state: State<'_, AppState>, id: String) -> Result<(), Str
 async fn cleanup_temp(state: State<'_, AppState>) -> Result<usize, String> {
     let cfg = state.store().load().map_err(msg)?;
     let mut session = state.session.lock().await;
-    chameleon_core::cleanup::cleanup_all(&mut session, &cfg).await.map_err(msg)
+    chameleon_core::cleanup::cleanup_all(&mut session, &cfg)
+        .await
+        .map_err(msg)
 }
 
 /// —— 退出（优雅关闭全部窗口） ——
@@ -509,15 +620,23 @@ fn reg_key_present(key: &str) -> bool {
 /// —— 窗口控制（无边框模式） ——
 
 #[tauri::command]
-fn app_minimize(window: tauri::Window) { let _ = window.minimize(); }
-
-#[tauri::command]
-fn app_maximize(window: tauri::Window) {
-    if window.is_maximized().unwrap_or(false) { let _ = window.unmaximize(); } else { let _ = window.maximize(); }
+fn app_minimize(window: tauri::Window) {
+    let _ = window.minimize();
 }
 
 #[tauri::command]
-fn app_hide(window: tauri::Window) { let _ = window.hide(); }
+fn app_maximize(window: tauri::Window) {
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    } else {
+        let _ = window.maximize();
+    }
+}
+
+#[tauri::command]
+fn app_hide(window: tauri::Window) {
+    let _ = window.hide();
+}
 
 pub fn show_error_box(title: &str, msg: &str) {
     #[cfg(windows)]
@@ -588,7 +707,9 @@ pub fn run() {
             // 系统托盘：常驻图标，关窗最小化到托盘，左键/菜单恢复
             let show_item = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = MenuBuilder::new(app).items(&[&show_item, &quit_item]).build()?;
+            let menu = MenuBuilder::new(app)
+                .items(&[&show_item, &quit_item])
+                .build()?;
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("chameleon")
@@ -632,19 +753,45 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_state,
-            create_role, update_role, delete_role,
-            create_system, update_system, delete_system, delete_system_with_roles,
-            launch_role_cmd, close_role_cmd, launch_all, launch_system, close_system, close_all,
-            login_assist_cmd, set_role_login,
+            create_role,
+            update_role,
+            delete_role,
+            create_system,
+            update_system,
+            delete_system,
+            delete_system_with_roles,
+            launch_role_cmd,
+            close_role_cmd,
+            launch_all,
+            launch_system,
+            close_system,
+            close_all,
+            login_assist_cmd,
+            set_role_login,
             handoff_cmd,
-            add_quick_link, edit_quick_link, remove_quick_link, open_quick_link,
-            add_system_quick_link, edit_system_quick_link, remove_system_quick_link,
-            pick_browser_path, set_browser_path,
-            get_ui_preferences, set_ui_preferences,
-            export_config_cmd, import_config_cmd,
-            save_snapshot, list_snapshots, restore_snapshot, delete_snapshot,
-            launch_sandbox, close_sandbox, cleanup_temp,
-            app_minimize, app_maximize, app_hide,
+            add_quick_link,
+            edit_quick_link,
+            remove_quick_link,
+            open_quick_link,
+            add_system_quick_link,
+            edit_system_quick_link,
+            remove_system_quick_link,
+            pick_browser_path,
+            set_browser_path,
+            get_ui_preferences,
+            set_ui_preferences,
+            export_config_cmd,
+            import_config_cmd,
+            save_snapshot,
+            list_snapshots,
+            restore_snapshot,
+            delete_snapshot,
+            launch_sandbox,
+            close_sandbox,
+            cleanup_temp,
+            app_minimize,
+            app_maximize,
+            app_hide,
             quit_app
         ])
         .build(tauri::generate_context!())

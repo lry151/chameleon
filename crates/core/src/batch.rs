@@ -38,7 +38,11 @@ fn merge_into(dst: &mut BatchResult, src: BatchResult) {
 }
 
 /// 收集需要启动的角色列表（过滤掉已运行的）。
-fn pending_roles<'a>(session: &Session, cfg: &'a GlobalConfig, system_id: Option<&str>) -> Vec<&'a crate::model::Role> {
+fn pending_roles<'a>(
+    session: &Session,
+    cfg: &'a GlobalConfig,
+    system_id: Option<&str>,
+) -> Vec<&'a crate::model::Role> {
     cfg.roles
         .iter()
         .filter(|r| {
@@ -72,7 +76,10 @@ async fn launch_one(
             let mut s = session.lock().await;
             s.roles.insert(
                 role.id.clone(),
-                crate::session::RunningRole { browser, active_page: None },
+                crate::session::RunningRole {
+                    browser,
+                    active_page: None,
+                },
             );
             // 自动打开预设 URL
             if let Some(run) = s.roles.get_mut(&role.id) {
@@ -131,7 +138,10 @@ async fn close_one(
 }
 
 /// 一键启动所有：按配置拉起全部角色窗口；已启动的角色不重复开窗。
-pub async fn start_all(session: Arc<tokio::sync::Mutex<Session>>, cfg: &GlobalConfig) -> BatchResult {
+pub async fn start_all(
+    session: Arc<tokio::sync::Mutex<Session>>,
+    cfg: &GlobalConfig,
+) -> BatchResult {
     // 先清掉外部已关的死角色
     {
         let mut s = session.lock().await;
@@ -165,7 +175,11 @@ pub async fn start_all(session: Arc<tokio::sync::Mutex<Session>>, cfg: &GlobalCo
 }
 
 /// 启动组：启动某系统下全部角色（已启动的不重复）。
-pub async fn start_system(session: Arc<tokio::sync::Mutex<Session>>, cfg: &GlobalConfig, system_id: &str) -> BatchResult {
+pub async fn start_system(
+    session: Arc<tokio::sync::Mutex<Session>>,
+    cfg: &GlobalConfig,
+    system_id: &str,
+) -> BatchResult {
     {
         let mut s = session.lock().await;
         launcher::prune_dead_roles(&mut s).await;
@@ -173,7 +187,10 @@ pub async fn start_system(session: Arc<tokio::sync::Mutex<Session>>, cfg: &Globa
     let sid = system_id.to_string();
     let pending: Vec<crate::model::Role> = {
         let s = session.lock().await;
-        pending_roles(&s, cfg, Some(&sid)).into_iter().cloned().collect()
+        pending_roles(&s, cfg, Some(&sid))
+            .into_iter()
+            .cloned()
+            .collect()
     };
     if pending.is_empty() {
         return BatchResult::default();

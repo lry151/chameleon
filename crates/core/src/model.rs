@@ -1,8 +1,8 @@
 //! 领域模型：角色、系统、全局配置、登录辅助、快照、窗口位置。
 
+use crate::config::app_dir;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::config::app_dir;
 
 /// 常用 URL 预设：名称 + 地址 + 是否启动时自动打开。
 /// 可选挂登录凭据（含密码）—— 点击该预设时自动打开 URL 并填用户名/密码。
@@ -106,17 +106,12 @@ impl System {
 }
 
 /// 主题模式：深色 / 浅色 / 跟随系统。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum ThemeMode {
+    #[default]
     Dark,
     Light,
     System,
-}
-
-impl Default for ThemeMode {
-    fn default() -> Self {
-        Self::Dark
-    }
 }
 
 /// UI 偏好：主题 + 面板透明度 + Accent 颜色。持久化到 config.json。

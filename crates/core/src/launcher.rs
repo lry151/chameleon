@@ -20,12 +20,14 @@ fn headless() -> bool {
     std::env::var_os("CHAMELEON_HEADLESS").is_some()
 }
 
-
 /// 构建角色的隔离启动参数。
 fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<BrowserConfig> {
     safety::validate_role(role, cfg)?;
-    debug_assert!(role.profile_dir.is_absolute(),
-        "profile_dir 须绝对（数据根愈合在 load 时），实为 {:?}", role.profile_dir);
+    debug_assert!(
+        role.profile_dir.is_absolute(),
+        "profile_dir 须绝对（数据根愈合在 load 时），实为 {:?}",
+        role.profile_dir
+    );
     if !is_writable(&role.profile_dir) {
         return Err(ChameleonError::LaunchFailed {
             detail: format!(
@@ -37,7 +39,11 @@ fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<
         });
     }
     let mut b = BrowserConfig::builder();
-    b = if headless() { b.new_headless_mode() } else { b.with_head() };
+    b = if headless() {
+        b.new_headless_mode()
+    } else {
+        b.with_head()
+    };
     let mut b = b
         .viewport(None)
         .port(role.cdp_port)
@@ -57,7 +63,8 @@ fn build_config(role: &Role, browser_path: &Path, cfg: &GlobalConfig) -> Result<
             .window_size(rect.width, rect.height)
             .arg(("window-position", pos.as_str()));
     }
-    b.build().map_err(|e| ChameleonError::LaunchFailed { detail: e })
+    b.build()
+        .map_err(|e| ChameleonError::LaunchFailed { detail: e })
 }
 
 /// 端口是否已被占用（用于判断既有实例是否需要接管）。
@@ -118,7 +125,10 @@ pub async fn launch_role(
                 spawn_handler(handler);
                 session.roles.insert(
                     role.id.clone(),
-                    RunningRole { browser, active_page: None },
+                    RunningRole {
+                        browser,
+                        active_page: None,
+                    },
                 );
                 return Ok(()); // 接管既有实例，不重复打开预设
             }
@@ -126,18 +136,21 @@ pub async fn launch_role(
                 // ADR-0006：端口被非浏览器/僵尸实例占用且无法接管 → 硬错误，
                 // 不再 fall-through 到 Browser::launch（在占用端口/锁定目录上反复
                 // spawn 瞬时窗口 = 「窗口一直闪」根因）。
-                return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
+                return Err(ChameleonError::PortTakenNotRole {
+                    port: role.cdp_port,
+                });
             }
         }
     }
     let config = build_config(role, &browser_path, cfg)?;
-    let (browser, handler) = Browser::launch(config)
-        .await
-        .map_err(classify_launch_err)?;
+    let (browser, handler) = Browser::launch(config).await.map_err(classify_launch_err)?;
     spawn_handler(handler);
     session.roles.insert(
         role.id.clone(),
-        RunningRole { browser, active_page: None },
+        RunningRole {
+            browser,
+            active_page: None,
+        },
     );
 
     // 首次启动 → 自动打开标记 auto_open 的预设（角色级 + 系统级）；失败跳过不阻塞。
@@ -173,14 +186,14 @@ pub async fn launch_role_no_session(
                 browser
             }
             Err(_) => {
-                return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
+                return Err(ChameleonError::PortTakenNotRole {
+                    port: role.cdp_port,
+                });
             }
         }
     } else {
         let config = build_config(role, &browser_path, cfg)?;
-        let (browser, handler) = Browser::launch(config)
-            .await
-            .map_err(classify_launch_err)?;
+        let (browser, handler) = Browser::launch(config).await.map_err(classify_launch_err)?;
         spawn_handler(handler);
         browser
     };
@@ -204,7 +217,12 @@ pub fn collect_auto_open_urls(role: &Role, cfg: &GlobalConfig) -> Vec<String> {
         .collect();
     if let Some(sid) = &role.system_id {
         if let Some(sys) = cfg.systems.iter().find(|s| s.id == *sid) {
-            v.extend(sys.quick_links.iter().filter(|q| q.auto_open).map(|q| q.url.clone()));
+            v.extend(
+                sys.quick_links
+                    .iter()
+                    .filter(|q| q.auto_open)
+                    .map(|q| q.url.clone()),
+            );
         }
     }
     v
@@ -219,7 +237,11 @@ pub async fn close_role(
     cfg: &mut GlobalConfig,
     role_id: &str,
 ) -> Result<()> {
-    let port = cfg.roles.iter().find(|r| r.id == role_id).map(|r| r.cdp_port);
+    let port = cfg
+        .roles
+        .iter()
+        .find(|r| r.id == role_id)
+        .map(|r| r.cdp_port);
     let Some(run) = session.roles.remove(role_id) else {
         return Err(ChameleonError::RoleNotRunning { id: role_id.into() });
     };
@@ -268,7 +290,12 @@ pub async fn close_role_no_session(
 }
 
 /// 在角色窗口新标签页打开 URL 并聚焦（未启动先拉起）。
-pub async fn open_tab(session: &mut Session, cfg: &GlobalConfig, role_id: &str, url: &str) -> Result<()> {
+pub async fn open_tab(
+    session: &mut Session,
+    cfg: &GlobalConfig,
+    role_id: &str,
+    url: &str,
+) -> Result<()> {
     let role = cfg
         .roles
         .iter()
@@ -282,7 +309,9 @@ pub async fn open_tab(session: &mut Session, cfg: &GlobalConfig, role_id: &str, 
         .browser
         .new_page(CreateTargetParams::new(url))
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::CdpOperation {
+            detail: e.to_string(),
+        })?;
     let id = page.target_id().clone();
     let _ = page.activate().await;
     run.active_page = Some(id);
@@ -306,7 +335,9 @@ pub async fn read_active_tab(session: &Session, role_id: &str) -> Result<String>
         .browser
         .pages()
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::CdpOperation {
+            detail: e.to_string(),
+        })?;
     for page in pages.into_iter().rev() {
         if let Ok(Some(url)) = page.url().await {
             if !url.is_empty() && url != "about:blank" {
@@ -314,7 +345,9 @@ pub async fn read_active_tab(session: &Session, role_id: &str) -> Result<String>
             }
         }
     }
-    Err(ChameleonError::CdpOperation { detail: "未能读取当前标签页地址".into() })
+    Err(ChameleonError::CdpOperation {
+        detail: "未能读取当前标签页地址".into(),
+    })
 }
 
 /// 从会话中移除角色（CDP 已断开等场景）。
@@ -396,7 +429,9 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
     let login = role
         .login
         .clone()
-        .ok_or_else(|| ChameleonError::ConfigInvalid { detail: "该角色未配置登录辅助".into() })?;
+        .ok_or_else(|| ChameleonError::ConfigInvalid {
+            detail: "该角色未配置登录辅助".into(),
+        })?;
     if !session.is_role_running(&role.id) {
         launch_role(session, cfg, &role, true).await?;
     }
@@ -405,26 +440,30 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
         .browser
         .new_page(CreateTargetParams::new(&login.login_url))
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::CdpOperation {
+            detail: e.to_string(),
+        })?;
     let id = page.target_id().clone();
     let _ = page.activate().await;
     run.active_page = Some(id);
 
-    let js = build_login_js(&login.username, "", login.username_selector.as_deref(), login.password_selector.as_deref());
+    let js = build_login_js(
+        &login.username,
+        "",
+        login.username_selector.as_deref(),
+        login.password_selector.as_deref(),
+    );
     // SPA 延迟渲染：轮询等输入框出现（最多 5s）
     let mut last = String::from("pending");
     for _ in 0..50 {
-        match page.evaluate(js.as_str()).await {
-            Ok(r) => {
-                last = r.into_value::<String>().unwrap_or_default();
-                if last == "ok" {
-                    return Ok(());
-                }
-                if last != "no_password" && last != "no_username" {
-                    break;
-                }
+        if let Ok(r) = page.evaluate(js.as_str()).await {
+            last = r.into_value::<String>().unwrap_or_default();
+            if last == "ok" {
+                return Ok(());
             }
-            Err(_) => {}
+            if last != "no_password" && last != "no_username" {
+                break;
+            }
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -433,7 +472,9 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
         "no_username" => "未找到用户名输入框，请手动登录",
         _ => "登录辅助执行失败，请手动登录",
     };
-    Err(ChameleonError::CdpOperation { detail: detail.into() })
+    Err(ChameleonError::CdpOperation {
+        detail: detail.into(),
+    })
 }
 
 /// 登录辅助（预设级 QuickLinkLogin）：打开指定 URL → 填用户名 + 密码。
@@ -458,25 +499,29 @@ pub async fn login_assist_link(
         .browser
         .new_page(CreateTargetParams::new(url))
         .await
-        .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
+        .map_err(|e| ChameleonError::CdpOperation {
+            detail: e.to_string(),
+        })?;
     let id = page.target_id().clone();
     let _ = page.activate().await;
     run.active_page = Some(id);
 
-    let js = build_login_js(&login.username, &login.password, login.username_selector.as_deref(), login.password_selector.as_deref());
+    let js = build_login_js(
+        &login.username,
+        &login.password,
+        login.username_selector.as_deref(),
+        login.password_selector.as_deref(),
+    );
     let mut last = String::from("pending");
     for _ in 0..50 {
-        match page.evaluate(js.as_str()).await {
-            Ok(r) => {
-                last = r.into_value::<String>().unwrap_or_default();
-                if last == "ok" {
-                    return Ok(());
-                }
-                if last != "no_password" && last != "no_username" {
-                    break;
-                }
+        if let Ok(r) = page.evaluate(js.as_str()).await {
+            last = r.into_value::<String>().unwrap_or_default();
+            if last == "ok" {
+                return Ok(());
             }
-            Err(_) => {}
+            if last != "no_password" && last != "no_username" {
+                break;
+            }
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -485,15 +530,24 @@ pub async fn login_assist_link(
         "no_username" => "未找到用户名输入框，请手动登录",
         _ => "登录辅助执行失败，请手动登录",
     };
-    Err(ChameleonError::CdpOperation { detail: detail.into() })
+    Err(ChameleonError::CdpOperation {
+        detail: detail.into(),
+    })
 }
 /// 构造登录辅助注入 JS（用户名/密码/选择器经 JSON 转义安全嵌入）。
 /// 同时填充用户名和密码（不再只填用户名）。
-fn build_login_js(username: &str, password: &str, username_selector: Option<&str>, password_selector: Option<&str>) -> String {
+fn build_login_js(
+    username: &str,
+    password: &str,
+    username_selector: Option<&str>,
+    password_selector: Option<&str>,
+) -> String {
     let u = serde_json::to_string(username).unwrap_or_else(|_| "\"\"".into());
     let p = serde_json::to_string(password).unwrap_or_else(|_| "\"\"".into());
-    let us = serde_json::to_string(username_selector.unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
-    let ps = serde_json::to_string(password_selector.unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+    let us =
+        serde_json::to_string(username_selector.unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+    let ps =
+        serde_json::to_string(password_selector.unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
     format!(
         r#"(function(u, p, usel, psel){{
   var pw = psel ? document.querySelector(psel) : document.querySelector('input[type=password]');
@@ -537,10 +591,13 @@ mod tests {
 
     #[test]
     fn classify_launch_err_maps_io_to_launch_failed_chinese() {
-        let e = CdpError::Io(std::io::Error::new(std::io::ErrorKind::Other, "boom"));
+        let e = CdpError::Io(std::io::Error::other("boom"));
         match classify_launch_err(e) {
             ChameleonError::LaunchFailed { detail } => {
-                assert!(detail.contains("无法启动浏览器"), "detail 应为中文: {detail}");
+                assert!(
+                    detail.contains("无法启动浏览器"),
+                    "detail 应为中文: {detail}"
+                );
             }
             other => panic!("应为 LaunchFailed，得到 {other:?}"),
         }
@@ -554,13 +611,18 @@ mod tests {
         let blocker = dir.path().join("blocker");
         std::fs::write(&blocker, b"x").unwrap();
         let role = Role::new("x".into(), "#fff".into(), blocker.join("admin"), 9222);
-        let cfg = GlobalConfig { data_root: blocker.join("data"), ..Default::default() };
+        let cfg = GlobalConfig {
+            data_root: blocker.join("data"),
+            ..Default::default()
+        };
         match build_config(&role, Path::new("dummy-browser"), &cfg) {
             Err(ChameleonError::LaunchFailed { detail }) => {
-                assert!(detail.contains("数据目录不可写"), "detail 应点明不可写: {detail}");
+                assert!(
+                    detail.contains("数据目录不可写"),
+                    "detail 应点明不可写: {detail}"
+                );
             }
             other => panic!("应为 LaunchFailed（数据目录不可写），得到 {other:?}"),
         }
     }
 }
-

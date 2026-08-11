@@ -10,9 +10,12 @@ use std::path::Path;
 
 /// 导出：把当前角色配置写成明文 JSON 文件（含名称/颜色/预设/端口）。
 pub fn export_config(cfg: &GlobalConfig, dest: &Path) -> Result<()> {
-    let data = serde_json::to_string_pretty(cfg)
-        .map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
-    fs::write(dest, data).map_err(|e| ChameleonError::ConfigWrite { detail: e.to_string() })?;
+    let data = serde_json::to_string_pretty(cfg).map_err(|e| ChameleonError::ConfigWrite {
+        detail: e.to_string(),
+    })?;
+    fs::write(dest, data).map_err(|e| ChameleonError::ConfigWrite {
+        detail: e.to_string(),
+    })?;
     Ok(())
 }
 
@@ -20,12 +23,17 @@ pub fn export_config(cfg: &GlobalConfig, dest: &Path) -> Result<()> {
 ///
 /// 导入角色数据目录重写到本机数据根目录下；任何校验失败返回中文错误且不改动现有配置。
 pub fn import_config(store: &ConfigStore, cfg: &mut GlobalConfig, src: &Path) -> Result<usize> {
-    let raw = fs::read_to_string(src)
-        .map_err(|e| ChameleonError::ImportInvalid { detail: format!("无法读取文件：{e}") })?;
-    let imported: GlobalConfig = serde_json::from_str(&raw)
-        .map_err(|e| ChameleonError::ImportInvalid { detail: format!("不是有效的配置文件：{e}") })?;
+    let raw = fs::read_to_string(src).map_err(|e| ChameleonError::ImportInvalid {
+        detail: format!("无法读取文件：{e}"),
+    })?;
+    let imported: GlobalConfig =
+        serde_json::from_str(&raw).map_err(|e| ChameleonError::ImportInvalid {
+            detail: format!("不是有效的配置文件：{e}"),
+        })?;
     if imported.roles.is_empty() {
-        return Err(ChameleonError::ImportInvalid { detail: "文件中没有角色".into() });
+        return Err(ChameleonError::ImportInvalid {
+            detail: "文件中没有角色".into(),
+        });
     }
     // 导入文件自身一致性校验（重名/重端口/重目录/默认目录）
     safety::validate_config(&imported)?;
@@ -39,7 +47,9 @@ pub fn import_config(store: &ConfigStore, cfg: &mut GlobalConfig, src: &Path) ->
             return Err(ChameleonError::PortConflict { port: r.cdp_port });
         }
         if cfg.roles.iter().any(|o| o.name == r.name) {
-            return Err(ChameleonError::DuplicateName { name: r.name.clone() });
+            return Err(ChameleonError::DuplicateName {
+                name: r.name.clone(),
+            });
         }
         let local_dir = cfg.data_root.join(sanitize_dir_name(&r.name));
         if cfg.roles.iter().any(|o| o.profile_dir == local_dir) {
@@ -65,8 +75,10 @@ mod tests {
 
     fn fixture(dir: &std::path::Path) -> (ConfigStore, GlobalConfig) {
         let store = ConfigStore::new(dir.join("config.json"));
-        let mut cfg = GlobalConfig::default();
-        cfg.data_root = dir.join("data");
+        let cfg = GlobalConfig {
+            data_root: dir.join("data"),
+            ..Default::default()
+        };
         (store, cfg)
     }
 
@@ -74,7 +86,9 @@ mod tests {
     fn export_roundtrip() {
         let dir = tempdir().unwrap();
         let (store, mut cfg) = fixture(dir.path());
-        store.create_role(&mut cfg, "ERP-管理员".into(), "#e74c3c".into()).unwrap();
+        store
+            .create_role(&mut cfg, "ERP-管理员".into(), "#e74c3c".into())
+            .unwrap();
         let dest = dir.path().join("export.json");
         export_config(&cfg, &dest).unwrap();
         let raw = fs::read_to_string(&dest).unwrap();
@@ -86,14 +100,20 @@ mod tests {
     fn import_merges_roles_and_preserves_ports() {
         let dir = tempdir().unwrap();
         let (store, mut cfg) = fixture(dir.path());
-        let r = store.create_role(&mut cfg, "管理员".into(), "#fff".into()).unwrap();
+        let r = store
+            .create_role(&mut cfg, "管理员".into(), "#fff".into())
+            .unwrap();
         let port = r.cdp_port;
 
         // 构造导入文件：另一个数据根下的角色
-        let mut other = GlobalConfig::default();
-        other.data_root = dir.path().join("other-data");
+        let other = GlobalConfig {
+            data_root: dir.path().join("other-data"),
+            ..Default::default()
+        };
         let (store2, mut cfg2) = (ConfigStore::new(dir.path().join("other.json")), other);
-        let r2 = store2.create_role(&mut cfg2, "审计员".into(), "#3498db".into()).unwrap();
+        let r2 = store2
+            .create_role(&mut cfg2, "审计员".into(), "#3498db".into())
+            .unwrap();
         let port2 = r2.cdp_port;
         let src = dir.path().join("import.json");
         export_config(&cfg2, &src).unwrap();
@@ -108,20 +128,33 @@ mod tests {
         assert!(imported.profile_dir.starts_with(&cfg.data_root));
         assert_ne!(imported.id, r2.id);
         // 现有角色不受影响
-        assert_eq!(cfg.roles.iter().find(|x| x.name == "管理员").unwrap().cdp_port, port);
+        assert_eq!(
+            cfg.roles
+                .iter()
+                .find(|x| x.name == "管理员")
+                .unwrap()
+                .cdp_port,
+            port
+        );
     }
 
     #[test]
     fn import_rejects_port_conflict_without_mutation() {
         let dir = tempdir().unwrap();
         let (store, mut cfg) = fixture(dir.path());
-        let r = store.create_role(&mut cfg, "管理员".into(), "#fff".into()).unwrap();
+        let r = store
+            .create_role(&mut cfg, "管理员".into(), "#fff".into())
+            .unwrap();
         let port = r.cdp_port;
 
-        let mut other = GlobalConfig::default();
-        other.data_root = dir.path().join("other");
+        let other = GlobalConfig {
+            data_root: dir.path().join("other"),
+            ..Default::default()
+        };
         let (store2, mut cfg2) = (ConfigStore::new(dir.path().join("o.json")), other);
-        let r2 = store2.create_role(&mut cfg2, "审计员".into(), "#3498db".into()).unwrap();
+        let _r2 = store2
+            .create_role(&mut cfg2, "审计员".into(), "#3498db".into())
+            .unwrap();
         // 手动制造端口冲突
         cfg2.roles[0].cdp_port = port;
         let src = dir.path().join("imp.json");
@@ -138,11 +171,16 @@ mod tests {
     fn import_rejects_default_dir() {
         let dir = tempdir().unwrap();
         let (store, mut cfg) = fixture(dir.path());
-        let mut other = GlobalConfig::default();
-        other.data_root = dir.path().join("o");
+        let other = GlobalConfig {
+            data_root: dir.path().join("o"),
+            ..Default::default()
+        };
         let (store2, mut cfg2) = (ConfigStore::new(dir.path().join("o.json")), other);
-        store2.create_role(&mut cfg2, "审计员".into(), "#3498db".into()).unwrap();
-        cfg2.roles[0].profile_dir = std::path::PathBuf::from(r"C:\Users\t\AppData\Local\Google\Chrome\User Data");
+        store2
+            .create_role(&mut cfg2, "审计员".into(), "#3498db".into())
+            .unwrap();
+        cfg2.roles[0].profile_dir =
+            std::path::PathBuf::from(r"C:\Users\t\AppData\Local\Google\Chrome\User Data");
         let src = dir.path().join("imp.json");
         export_config(&cfg2, &src).unwrap();
 
