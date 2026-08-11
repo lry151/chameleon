@@ -10,7 +10,7 @@ use crate::session::Session;
 pub async fn cleanup_all(session: &mut Session, cfg: &GlobalConfig) -> Result<usize> {
     let ids: Vec<String> = session.sandboxes.keys().cloned().collect();
     for id in ids {
-        let _ = sandbox::close(session, &id).await;
+        crate::warn_err(sandbox::close(session, &id).await, "清理沙箱关闭失败");
     }
     sandbox::cleanup_orphans(&[], cfg)
 }

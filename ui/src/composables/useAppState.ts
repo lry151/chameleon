@@ -13,6 +13,7 @@ export const appState = ref<AppStateView>({
   browser_candidates: [],
   backdrop: "None",
   data_root: "",
+  log_path: "",
 });
 
 export async function loadAppState(): Promise<void> {

@@ -97,11 +97,11 @@ pub async fn close(session: &mut Session, id: &str) -> Result<()> {
     let Some(mut sb) = session.sandboxes.remove(id) else {
         return Err(ChameleonError::SandboxNotFound { id: id.into() });
     };
-    let _ = tokio::time::timeout(Duration::from_secs(5), sb.browser.close()).await;
+    crate::warn_timeout(sb.browser.close(), 5, "沙箱 Browser.close").await;
     // Browser::close 收到 ACK 即返回，进程仍在退出过程中；先等进程真正退出
     // 再删目录，避免与仍在写 user-data-dir 的进程竞争（同 launcher::close_role）。
-    let _ = tokio::time::timeout(Duration::from_secs(5), sb.browser.wait()).await;
-    let _ = fs::remove_dir_all(&sb.dir);
+    crate::warn_timeout(sb.browser.wait(), 5, "沙箱 Browser.wait").await;
+    crate::warn_err(fs::remove_dir_all(&sb.dir), "沙箱目录删除失败");
     Ok(())
 }
 
@@ -126,7 +126,7 @@ pub fn cleanup_orphans(session_live_ids: &[String], cfg: &GlobalConfig) -> Resul
                 continue;
             }
         }
-        let _ = fs::remove_dir_all(&p);
+        crate::warn_err(fs::remove_dir_all(&p), "孤儿沙箱目录删除失败");
         removed += 1;
     }
     Ok(removed)

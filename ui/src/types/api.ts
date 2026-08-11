@@ -104,4 +104,6 @@ export interface AppStateView {
   browser_candidates: BrowserCandidate[];
   backdrop: BackdropKind;
   data_root: string;
+  /// chameleon.log 文件路径（设置页「打开日志文件夹」用）。
+  log_path: string;
 }

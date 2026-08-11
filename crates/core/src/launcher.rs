@@ -122,22 +122,35 @@ pub async fn launch_role(
                 );
                 return Ok(()); // 接管既有实例，不重复打开预设
             }
-            Err(_) => {
+            Err(e) => {
                 // ADR-0006：端口被非浏览器/僵尸实例占用且无法接管 → 硬错误，
                 // 不再 fall-through 到 Browser::launch（在占用端口/锁定目录上反复
                 // spawn 瞬时窗口 = 「窗口一直闪」根因）。
+                tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "端口被占用但 CDP 接管失败");
                 return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
             }
         }
     }
     let config = build_config(role, &browser_path, cfg)?;
-    let (browser, handler) = Browser::launch(config)
-        .await
-        .map_err(classify_launch_err)?;
+    let (browser, handler) = match Browser::launch(config).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "浏览器启动失败");
+            return Err(classify_launch_err(e));
+        }
+    };
     spawn_handler(handler);
     session.roles.insert(
         role.id.clone(),
         RunningRole { browser, active_page: None },
+    );
+    tracing::info!(
+        role_id = %role.id,
+        role_name = %role.name,
+        cdp_port = role.cdp_port,
+        profile_dir = %role.profile_dir.display(),
+        browser_path = %browser_path.display(),
+        "角色窗口启动",
     );
 
     // 首次启动 → 自动打开标记 auto_open 的预设（角色级 + 系统级）；失败跳过不阻塞。
@@ -148,7 +161,7 @@ pub async fn launch_role(
             if let Some(run) = session.roles.get_mut(&role.id) {
                 if let Ok(page) = run.browser.new_page(CreateTargetParams::new(&url)).await {
                     let id = page.target_id().clone();
-                    let _ = page.activate().await;
+                    crate::warn_err(page.activate().await, "启动自动预设 page.activate 失败");
                     run.active_page = Some(id);
                 }
             }
@@ -172,15 +185,20 @@ pub async fn launch_role_no_session(
                 spawn_handler(handler);
                 browser
             }
-            Err(_) => {
+            Err(e) => {
+                tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "端口被占用但 CDP 接管失败");
                 return Err(ChameleonError::PortTakenNotRole { port: role.cdp_port });
             }
         }
     } else {
         let config = build_config(role, &browser_path, cfg)?;
-        let (browser, handler) = Browser::launch(config)
-            .await
-            .map_err(classify_launch_err)?;
+        let (browser, handler) = match Browser::launch(config).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(error = %e, role_id = %role.id, cdp_port = role.cdp_port, "浏览器启动失败");
+                return Err(classify_launch_err(e));
+            }
+        };
         spawn_handler(handler);
         browser
     };
@@ -230,20 +248,22 @@ pub async fn close_role(
         }
     }
     let mut browser = run.browser;
-    let _ = tokio::time::timeout(Duration::from_secs(5), browser.close()).await;
+    crate::warn_timeout(browser.close(), 5, "Browser.close").await;
     // 等 Chrome 进程真正退出；对 launched 实例 wait() 等到进程退出，
     // 对 takeover（connect）实例 wait() 立即返回，靠下面轮询端口兜底。
-    let _ = tokio::time::timeout(Duration::from_secs(5), browser.wait()).await;
+    crate::warn_timeout(browser.wait(), 5, "Browser.wait").await;
     // 兜底轮询端口：takeover 路径下 wait() 不阻塞，Chrome 异步退出期间
     // 端口仍占用，轮询到端口释放或最多 2 秒后返回。
     if let Some(port) = port {
         for _ in 0..20 {
             if !port_open(port) {
+                tracing::info!(role_id = role_id, "角色窗口关闭");
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
+    tracing::info!(role_id = role_id, "角色窗口关闭");
     Ok(())
 }
 
@@ -254,8 +274,8 @@ pub async fn close_role_no_session(
     port: Option<u16>,
 ) -> Result<Option<crate::model::WindowRect>> {
     let rect = window::capture_bounds(&browser).await.ok();
-    let _ = tokio::time::timeout(Duration::from_secs(5), browser.close()).await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), browser.wait()).await;
+    crate::warn_timeout(browser.close(), 5, "Browser.close").await;
+    crate::warn_timeout(browser.wait(), 5, "Browser.wait").await;
     if let Some(port) = port {
         for _ in 0..20 {
             if !port_open(port) {
@@ -284,7 +304,7 @@ pub async fn open_tab(session: &mut Session, cfg: &GlobalConfig, role_id: &str, 
         .await
         .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
     let id = page.target_id().clone();
-    let _ = page.activate().await;
+    crate::warn_err(page.activate().await, "open_tab page.activate 失败");
     run.active_page = Some(id);
     Ok(())
 }
@@ -370,7 +390,7 @@ pub async fn close_other_tabs(session: &mut Session, role_id: &str, keep: &[Targ
     if let Ok(pages) = run.browser.pages().await {
         for page in pages {
             if !keep.contains(page.target_id()) {
-                let _ = page.close().await;
+                crate::warn_err(page.close().await, "close_other_tabs page.close 失败");
             }
         }
     }
@@ -380,7 +400,7 @@ pub async fn close_other_tabs(session: &mut Session, role_id: &str, keep: &[Targ
 pub async fn close_all_roles(session: &mut Session, store: &ConfigStore, cfg: &mut GlobalConfig) {
     let ids: Vec<String> = session.roles.keys().cloned().collect();
     for id in ids {
-        let _ = close_role(session, store, cfg, &id).await;
+        crate::warn_err(close_role(session, store, cfg, &id).await, "close_all_roles 关闭失败");
     }
 }
 
@@ -407,7 +427,7 @@ pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &s
         .await
         .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
     let id = page.target_id().clone();
-    let _ = page.activate().await;
+    crate::warn_err(page.activate().await, "login_assist page.activate 失败");
     run.active_page = Some(id);
 
     let js = build_login_js(&login.username, "", login.username_selector.as_deref(), login.password_selector.as_deref());
@@ -460,7 +480,7 @@ pub async fn login_assist_link(
         .await
         .map_err(|e| ChameleonError::CdpOperation { detail: e.to_string() })?;
     let id = page.target_id().clone();
-    let _ = page.activate().await;
+    crate::warn_err(page.activate().await, "login_assist_link page.activate 失败");
     run.active_page = Some(id);
 
     let js = build_login_js(&login.username, &login.password, login.username_selector.as_deref(), login.password_selector.as_deref());

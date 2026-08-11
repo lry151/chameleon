@@ -73,6 +73,17 @@
           {{ browserPath }}
         </n-text>
       </div>
+
+      <!-- 段 5：日志 -->
+      <div class="settings-section">
+        <n-text class="settings-label">日志</n-text>
+        <div class="settings-row">
+          <n-text class="settings-browser-path" depth="3">
+            {{ appState.log_path }}
+          </n-text>
+          <n-button @click="handleOpenLogFolder">打开日志文件夹</n-button>
+        </div>
+      </div>
     </div>
   </n-modal>
 </template>
@@ -122,6 +133,14 @@ async function handlePickBrowser() {
     }
   } catch (err) {
     message.error("选择浏览器失败");
+  }
+}
+
+async function handleOpenLogFolder() {
+  try {
+    await tauri.openLogFolder();
+  } catch (err) {
+    message.error("打开日志文件夹失败");
   }
 }
 

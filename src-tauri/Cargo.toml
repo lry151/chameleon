@@ -24,6 +24,10 @@ serde.workspace = true
 serde_json.workspace = true
 chameleon-core = { path = "../crates/core" }
 tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+tracing-panic = "0.1"
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.6"
 windows-version = "0.1"

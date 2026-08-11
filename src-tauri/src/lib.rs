@@ -5,7 +5,7 @@
 use chameleon_core::{
     batch::BatchResult,
     browser::BrowserCandidate,
-    config::{app_dir, ConfigStore},
+    config::{app_dir, data_base, ConfigStore},
     export,
     handoff::HandoffMode,
     launcher,
@@ -23,6 +23,7 @@ use tauri::{
     Manager, State, WindowEvent,
 };
 use tauri_plugin_dialog::DialogExt;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 mod vibrancy;
 
@@ -30,9 +31,54 @@ fn msg(e: ChameleonError) -> String {
     e.message()
 }
 
+/// 初始化 tracing 日志栈：dev stderr（受 `RUST_LOG` 控制）+ 文件常写（`chameleon.log`）。
+/// 返回 (log_path, guard)。guard 须在 app 生命周期内持有，drop 时 flush 缓冲。
+fn init_logging(log_dir: PathBuf) -> (PathBuf, tracing_appender::non_blocking::WorkerGuard) {
+    let log_path = log_dir.join("chameleon.log");
+    let _ = std::fs::create_dir_all(&log_dir);
+    // data_base 可写性由 ADR-0011 探优；兜底 stderr（不丢日志）。
+    let writer: Box<dyn std::io::Write + Send> = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        Ok(f) => Box::new(f),
+        Err(_) => Box::new(std::io::stderr()),
+    };
+    let (non_blocking, guard) = tracing_appender::non_blocking(writer);
+
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(EnvFilter::from_default_env()),
+        )
+        .with(fmt::layer().with_writer(non_blocking))
+        .init();
+
+    (log_path, guard)
+}
+
+/// 在 OS 文件管理器中打开目录（跨平台）。
+fn open_dir(dir: &std::path::Path) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer").arg(dir).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(dir).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+    }
+}
+
 pub struct AppState {
     pub session: Arc<tokio::sync::Mutex<Session>>,
     pub app_dir: PathBuf,
+    pub log_path: PathBuf,
 }
 
 impl AppState {
@@ -61,6 +107,7 @@ pub struct AppStateView {
     pub browser_candidates: Vec<BrowserCandidate>,
     pub backdrop: String,
     pub data_root: String,
+    pub log_path: String,
 }
 
 /// —— 查询 ——
@@ -96,6 +143,7 @@ async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
         browser_candidates,
         backdrop: vibrancy::detect_backdrop_capability().as_str().to_string(),
         data_root: cfg.data_root.display().to_string(),
+        log_path: state.log_path.display().to_string(),
     })
 }
 
@@ -123,7 +171,7 @@ async fn delete_role(state: State<'_, AppState>, id: String) -> Result<(), Strin
         let mut session = state.session.lock().await;
         launcher::prune_dead_roles(&mut session).await;
         if session.is_role_running(&id) {
-            let _ = launcher::close_role(&mut session, &store, &mut cfg, &id).await;
+            chameleon_core::warn_err(launcher::close_role(&mut session, &store, &mut cfg, &id).await, "delete_role 关闭运行角色失败");
         }
     }
     store.delete_role(&mut cfg, &id).map_err(msg)
@@ -176,7 +224,10 @@ async fn launch_role_cmd(state: State<'_, AppState>, id: String) -> Result<(), S
     let role = cfg.roles.iter().find(|r| r.id == id).cloned().ok_or_else(|| msg(ChameleonError::RoleNotFound { id: id.clone() }))?;
     let mut session = state.session.lock().await;
     launcher::prune_dead_roles(&mut session).await;
-    launcher::launch_role(&mut session, &cfg, &role, true).await.map_err(msg)
+    launcher::launch_role(&mut session, &cfg, &role, true).await.map_err(|e| {
+        tracing::error!(error = %e, role_id = %id, cdp_port = role.cdp_port, "角色启动失败");
+        msg(e)
+    })
 }
 
 #[tauri::command]
@@ -365,7 +416,7 @@ async fn set_ui_preferences(
     if old_theme != prefs.theme {
         if let Some(window) = app.get_webview_window("main") {
             if let Err(e) = vibrancy::apply_vibrancy_for_theme(&window, prefs.theme) {
-                eprintln!("切换 vibrancy 失败: {e}");
+                tracing::warn!(error = %e, "切换 vibrancy 失败");
             }
         }
     }
@@ -469,6 +520,15 @@ async fn quit_app(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<(
     Ok(())
 }
 
+/// —— 日志 ——
+
+#[tauri::command]
+async fn open_log_folder(state: State<'_, AppState>) -> Result<(), String> {
+    let dir = state.log_path.parent().unwrap_or(&state.log_path);
+    open_dir(dir);
+    Ok(())
+}
+
 /// 优雅关闭全部角色窗口与沙箱。取 Arc+app_dir 的克隆，便于从托盘菜单
 /// 的 spawn 任务调用，不在主线程 block_on（避免托盘「退出」卡死）。
 async fn shutdown(session: Arc<tokio::sync::Mutex<Session>>, app_dir: PathBuf) {
@@ -480,7 +540,7 @@ async fn shutdown(session: Arc<tokio::sync::Mutex<Session>>, app_dir: PathBuf) {
     launcher::close_all_roles(&mut session, &store, &mut cfg).await;
     let ids: Vec<String> = session.sandboxes.keys().cloned().collect();
     for id in ids {
-        let _ = sandbox::close(&mut session, &id).await;
+        chameleon_core::warn_err(sandbox::close(&mut session, &id).await, "shutdown 关闭沙箱失败");
     }
 }
 
@@ -543,11 +603,15 @@ pub fn show_error_box(title: &str, msg: &str) {
 
 pub fn run() {
     let app_dir = app_dir();
+    let log_dir = data_base().join("logs");
+    let (log_path, _log_guard) = init_logging(log_dir);
+    std::panic::set_hook(Box::new(tracing_panic::panic_hook));
+    tracing::info!(log_path = %log_path.display(), "chameleon 启动");
     {
         let cfg = ConfigStore::new(app_dir.join("config.json"))
             .load()
             .unwrap_or_default();
-        let _ = sandbox::cleanup_orphans(&[], &cfg);
+        chameleon_core::warn_err(sandbox::cleanup_orphans(&[], &cfg), "启动清理孤儿沙箱失败");
     }
 
     tauri::Builder::default()
@@ -559,6 +623,7 @@ pub fn run() {
         .manage(AppState {
             session: Arc::new(tokio::sync::Mutex::new(Session::default())),
             app_dir: app_dir.clone(),
+            log_path: log_path.clone(),
         })
         .setup(move |app| {
             tauri::WebviewWindowBuilder::new(
@@ -581,7 +646,7 @@ pub fn run() {
                     .map(|c| c.ui_preferences.theme)
                     .unwrap_or_default();
                 if let Err(e) = vibrancy::apply_vibrancy_for_theme(&window, initial_theme) {
-                    eprintln!("启动 vibrancy 失败: {e}");
+                    tracing::warn!(error = %e, "启动 vibrancy 失败");
                 }
             }
 
@@ -645,7 +710,8 @@ pub fn run() {
             save_snapshot, list_snapshots, restore_snapshot, delete_snapshot,
             launch_sandbox, close_sandbox, cleanup_temp,
             app_minimize, app_maximize, app_hide,
-            quit_app
+            quit_app,
+            open_log_folder
         ])
         .build(tauri::generate_context!())
         .expect("构建 chameleon 应用失败")
@@ -663,5 +729,31 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 冒烟验证：init_logging 创建 chameleon.log 并写入 tracing 事件。
+    /// tracing_subscriber::init() 全局唯一，src-tauri 仅此一个测试，不冲突。
+    #[test]
+    fn init_logging_creates_file_and_writes_events() {
+        let dir = std::env::temp_dir().join("chameleon-log-smoke");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let (log_path, guard) = init_logging(dir.clone());
+        tracing::info!("smoke test event");
+        drop(guard); // flush non_blocking 缓冲
+
+        let content = std::fs::read_to_string(&log_path)
+            .expect("chameleon.log 应存在且可读");
+        assert!(
+            content.contains("smoke test event"),
+            "日志文件应包含写入的事件，实得: {content}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
