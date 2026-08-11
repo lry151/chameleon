@@ -33,7 +33,9 @@ pub async fn handoff(
         .roles
         .iter()
         .find(|r| r.id == target_id)
-        .ok_or_else(|| ChameleonError::RoleNotFound { id: target_id.into() })?
+        .ok_or_else(|| ChameleonError::RoleNotFound {
+            id: target_id.into(),
+        })?
         .clone();
     if !session.is_role_running(target_id) {
         launcher::launch_role(session, cfg, &target, true).await?;

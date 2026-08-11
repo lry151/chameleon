@@ -19,7 +19,9 @@ impl InstanceLock {
             .write(true)
             .truncate(false)
             .open(&path)
-            .map_err(|e| ChameleonError::Io { detail: e.to_string() })?;
+            .map_err(|e| ChameleonError::Io {
+                detail: e.to_string(),
+            })?;
         file.try_lock_exclusive()
             .map_err(|_| ChameleonError::AlreadyRunning)?;
         Ok(InstanceLock { _file: file })

@@ -4,11 +4,14 @@ use std::net::TcpListener;
 
 /// 分配一个当前空闲的 TCP 端口（绑定 0 → 读取实际端口 → 释放）。
 pub fn pick_free_port() -> crate::Result<u16> {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| crate::ChameleonError::Io { detail: e.to_string() })?;
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| crate::ChameleonError::Io {
+        detail: e.to_string(),
+    })?;
     let port = listener
         .local_addr()
-        .map_err(|e| crate::ChameleonError::Io { detail: e.to_string() })?
+        .map_err(|e| crate::ChameleonError::Io {
+            detail: e.to_string(),
+        })?
         .port();
     Ok(port)
 }

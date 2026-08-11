@@ -15,23 +15,50 @@ fn known_install_paths() -> Vec<(String, PathBuf)> {
     let mut paths = Vec::new();
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         let base = PathBuf::from(local);
-        paths.push(("Chrome".into(), base.join("Google").join("Chrome").join("Application").join("chrome.exe")));
-        paths.push(("Chromium".into(), base.join("Chromium").join("Application").join("chrome.exe")));
-        paths.push(("Edge".into(), base.join("Microsoft").join("Edge").join("Application").join("msedge.exe")));
+        paths.push((
+            "Chrome".into(),
+            base.join("Google")
+                .join("Chrome")
+                .join("Application")
+                .join("chrome.exe"),
+        ));
+        paths.push((
+            "Chromium".into(),
+            base.join("Chromium").join("Application").join("chrome.exe"),
+        ));
+        paths.push((
+            "Edge".into(),
+            base.join("Microsoft")
+                .join("Edge")
+                .join("Application")
+                .join("msedge.exe"),
+        ));
     }
     for drive in ["C:", "D:", "E:"] {
-        paths.push(("Chrome".into(), PathBuf::from(format!(
-            r"{drive}\Program Files\Google\Chrome\Application\chrome.exe"
-        ))));
-        paths.push(("Chrome".into(), PathBuf::from(format!(
-            r"{drive}\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-        ))));
-        paths.push(("Edge".into(), PathBuf::from(format!(
-            r"{drive}\Program Files\Microsoft\Edge\Application\msedge.exe"
-        ))));
-        paths.push(("Edge".into(), PathBuf::from(format!(
-            r"{drive}\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-        ))));
+        paths.push((
+            "Chrome".into(),
+            PathBuf::from(format!(
+                r"{drive}\Program Files\Google\Chrome\Application\chrome.exe"
+            )),
+        ));
+        paths.push((
+            "Chrome".into(),
+            PathBuf::from(format!(
+                r"{drive}\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+            )),
+        ));
+        paths.push((
+            "Edge".into(),
+            PathBuf::from(format!(
+                r"{drive}\Program Files\Microsoft\Edge\Application\msedge.exe"
+            )),
+        ));
+        paths.push((
+            "Edge".into(),
+            PathBuf::from(format!(
+                r"{drive}\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+            )),
+        ));
     }
     paths
 }
@@ -40,7 +67,10 @@ fn known_install_paths() -> Vec<(String, PathBuf)> {
 fn dev_paths() -> Vec<(String, PathBuf)> {
     vec![
         ("Chromium".into(), PathBuf::from("/snap/bin/chromium")),
-        ("Chromium".into(), PathBuf::from("/usr/bin/chromium-browser")),
+        (
+            "Chromium".into(),
+            PathBuf::from("/usr/bin/chromium-browser"),
+        ),
         ("Chromium".into(), PathBuf::from("/usr/bin/chromium")),
         ("Chrome".into(), PathBuf::from("/usr/bin/google-chrome")),
         ("Edge".into(), PathBuf::from("/usr/bin/microsoft-edge")),
@@ -52,10 +82,16 @@ fn dev_paths() -> Vec<(String, PathBuf)> {
 pub fn list_browser_candidates(manual_override: Option<&Path>) -> Vec<BrowserCandidate> {
     let mut out: Vec<BrowserCandidate> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let push = |out: &mut Vec<BrowserCandidate>, seen: &mut std::collections::HashSet<String>, name: &str, p: PathBuf| {
+    let push = |out: &mut Vec<BrowserCandidate>,
+                seen: &mut std::collections::HashSet<String>,
+                name: &str,
+                p: PathBuf| {
         let key = p.to_string_lossy().to_lowercase();
         if p.exists() && seen.insert(key) {
-            out.push(BrowserCandidate { name: name.into(), path: p.to_string_lossy().to_string() });
+            out.push(BrowserCandidate {
+                name: name.into(),
+                path: p.to_string_lossy().to_string(),
+            });
         }
     };
     // 手动指定优先列出，但保留全部自动扫描候选（不掩盖）。detect_browser 仍
@@ -65,10 +101,18 @@ pub fn list_browser_candidates(manual_override: Option<&Path>) -> Vec<BrowserCan
             push(&mut out, &mut seen, "手动指定", p.to_path_buf());
         }
     }
-    for (name, p) in registry_app_paths() { push(&mut out, &mut seen, &name, p); }
-    for (name, p) in known_install_paths() { push(&mut out, &mut seen, &name, p); }
-    for (name, p) in path_env_candidates() { push(&mut out, &mut seen, &name, p); }
-    for (name, p) in dev_paths() { push(&mut out, &mut seen, &name, p); }
+    for (name, p) in registry_app_paths() {
+        push(&mut out, &mut seen, &name, p);
+    }
+    for (name, p) in known_install_paths() {
+        push(&mut out, &mut seen, &name, p);
+    }
+    for (name, p) in path_env_candidates() {
+        push(&mut out, &mut seen, &name, p);
+    }
+    for (name, p) in dev_paths() {
+        push(&mut out, &mut seen, &name, p);
+    }
     out
 }
 
@@ -79,7 +123,10 @@ pub fn detect_browser(manual_override: Option<&Path>) -> Result<PathBuf> {
             return Ok(p.to_path_buf());
         }
         return Err(ChameleonError::LaunchFailed {
-            detail: format!("指定的浏览器路径不存在：{}。请重新选择浏览器路径。", p.display()),
+            detail: format!(
+                "指定的浏览器路径不存在：{}。请重新选择浏览器路径。",
+                p.display()
+            ),
         });
     }
     let cands = list_browser_candidates(None);
@@ -146,7 +193,14 @@ fn path_env_candidates() -> Vec<(String, PathBuf)> {
     };
     let mut out = Vec::new();
     for dir in std::env::split_paths(&path) {
-        for name in ["chrome", "chromium", "chromium-browser", "google-chrome", "msedge", "microsoft-edge"] {
+        for name in [
+            "chrome",
+            "chromium",
+            "chromium-browser",
+            "google-chrome",
+            "msedge",
+            "microsoft-edge",
+        ] {
             #[cfg(windows)]
             let full = dir.join(format!("{name}.exe"));
             #[cfg(not(windows))]
@@ -174,7 +228,11 @@ mod tests {
         let cands = list_browser_candidates(None);
         // 开发环境至少命中一个，或为空（可接受）
         for c in &cands {
-            assert!(std::path::Path::new(&c.path).exists(), "candidate must exist: {}", c.path);
+            assert!(
+                std::path::Path::new(&c.path).exists(),
+                "candidate must exist: {}",
+                c.path
+            );
         }
     }
 

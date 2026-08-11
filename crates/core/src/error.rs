@@ -120,7 +120,9 @@ impl ChameleonError {
 
 impl From<std::io::Error> for ChameleonError {
     fn from(e: std::io::Error) -> Self {
-        ChameleonError::Io { detail: e.to_string() }
+        ChameleonError::Io {
+            detail: e.to_string(),
+        }
     }
 }
 
@@ -134,7 +136,9 @@ mod tests {
             ChameleonError::BrowserNotFound,
             ChameleonError::AlreadyRunning,
             ChameleonError::RoleNotFound { id: "x".into() },
-            ChameleonError::DefaultDirRefused { dir: PathBuf::from("C:\\Users\\a\\AppData\\Local\\Google\\Chrome\\User Data") },
+            ChameleonError::DefaultDirRefused {
+                dir: PathBuf::from("C:\\Users\\a\\AppData\\Local\\Google\\Chrome\\User Data"),
+            },
             ChameleonError::PortConflict { port: 9222 },
             ChameleonError::PortTakenNotRole { port: 9222 },
         ];
@@ -166,6 +170,9 @@ mod tests {
         }
         // CdpConnectFailed 也要带处理措施
         let cdp = ChameleonError::CdpConnectFailed { detail: "x".into() }.message();
-        assert!(cdp.contains("处理措施"), "CdpConnectFailed 缺少处理措施: {cdp}");
+        assert!(
+            cdp.contains("处理措施"),
+            "CdpConnectFailed 缺少处理措施: {cdp}"
+        );
     }
 }

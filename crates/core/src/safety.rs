@@ -54,16 +54,17 @@ pub fn touches_default_dir(dir: &Path) -> Option<PathBuf> {
     } else {
         std::env::current_dir().unwrap_or_default().join(dir)
     };
-    if let Some(d) = default_browser_dirs().into_iter().find(|d| {
-        abs == *d || abs.starts_with(d)
-    }) {
+    if let Some(d) = default_browser_dirs()
+        .into_iter()
+        .find(|d| abs == *d || abs.starts_with(d))
+    {
         return Some(d);
     }
     let norm = normalized_lower(&abs);
     DEFAULT_DIR_MARKERS
         .iter()
         .any(|m| norm.contains(&m.to_lowercase()))
-        .then(|| abs)
+        .then_some(abs)
 }
 
 /// 校验角色是否可启动：默认目录拒绝 + 端口冲突 + 重名/重目录。
@@ -79,13 +80,19 @@ pub fn validate_role(role: &Role, config: &GlobalConfig) -> Result<()> {
             continue;
         }
         if other.cdp_port == role.cdp_port {
-            return Err(ChameleonError::PortConflict { port: role.cdp_port });
+            return Err(ChameleonError::PortConflict {
+                port: role.cdp_port,
+            });
         }
         if other.name == role.name {
-            return Err(ChameleonError::DuplicateName { name: role.name.clone() });
+            return Err(ChameleonError::DuplicateName {
+                name: role.name.clone(),
+            });
         }
         if other.profile_dir == role.profile_dir {
-            return Err(ChameleonError::DuplicateDir { dir: role.profile_dir.clone() });
+            return Err(ChameleonError::DuplicateDir {
+                dir: role.profile_dir.clone(),
+            });
         }
     }
     Ok(())
@@ -94,7 +101,9 @@ pub fn validate_role(role: &Role, config: &GlobalConfig) -> Result<()> {
 /// 校验整个配置的一致性（导入 / 加载时使用）。
 pub fn validate_config(config: &GlobalConfig) -> Result<()> {
     if config.data_root.as_os_str().is_empty() {
-        return Err(ChameleonError::ConfigInvalid { detail: "数据根目录不能为空".into() });
+        return Err(ChameleonError::ConfigInvalid {
+            detail: "数据根目录不能为空".into(),
+        });
     }
     let mut ports = std::collections::HashSet::new();
     let mut names = std::collections::HashSet::new();
@@ -104,16 +113,24 @@ pub fn validate_config(config: &GlobalConfig) -> Result<()> {
             return Err(ChameleonError::DefaultDirRefused { dir: d });
         }
         if !ports.insert(role.cdp_port) {
-            return Err(ChameleonError::PortConflict { port: role.cdp_port });
+            return Err(ChameleonError::PortConflict {
+                port: role.cdp_port,
+            });
         }
         if !names.insert(role.name.clone()) {
-            return Err(ChameleonError::DuplicateName { name: role.name.clone() });
+            return Err(ChameleonError::DuplicateName {
+                name: role.name.clone(),
+            });
         }
         if !dirs.insert(role.profile_dir.clone()) {
-            return Err(ChameleonError::DuplicateDir { dir: role.profile_dir.clone() });
+            return Err(ChameleonError::DuplicateDir {
+                dir: role.profile_dir.clone(),
+            });
         }
         if role.profile_dir.as_os_str().is_empty() {
-            return Err(ChameleonError::ConfigInvalid { detail: format!("角色「{}」缺少数据目录", role.name) });
+            return Err(ChameleonError::ConfigInvalid {
+                detail: format!("角色「{}」缺少数据目录", role.name),
+            });
         }
     }
     Ok(())

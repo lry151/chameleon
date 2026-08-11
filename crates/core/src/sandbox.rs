@@ -27,10 +27,14 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
     let browser_path = browser::detect_browser(cfg.browser_path.as_deref())?;
     let id = uuid::Uuid::new_v4().to_string();
     let dir = cfg.data_root.join("sandbox").join(&id);
-    fs::create_dir_all(&dir)
-        .map_err(|e| ChameleonError::SandboxLaunch { detail: e.to_string() })?;
-    fs::write(dir.join(SANDBOX_MARKER), "chameleon sandbox")
-        .map_err(|e| ChameleonError::SandboxLaunch { detail: e.to_string() })?;
+    fs::create_dir_all(&dir).map_err(|e| ChameleonError::SandboxLaunch {
+        detail: e.to_string(),
+    })?;
+    fs::write(dir.join(SANDBOX_MARKER), "chameleon sandbox").map_err(|e| {
+        ChameleonError::SandboxLaunch {
+            detail: e.to_string(),
+        }
+    })?;
     let port = ports::pick_free_port()?;
     let mut b = BrowserConfig::builder();
     b = if std::env::var_os("CHAMELEON_HEADLESS").is_some() {
@@ -54,22 +58,23 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
         .window_size(1280, 800)
         .build()
         .map_err(|e| ChameleonError::SandboxLaunch { detail: e })?;
-    let (browser, handler) = Browser::launch(config)
-        .await
-        .map_err(|e| match crate::launcher::classify_launch_err(e) {
+    let (browser, handler) = Browser::launch(config).await.map_err(|e| {
+        match crate::launcher::classify_launch_err(e) {
             ChameleonError::BrowserStartTimeout => ChameleonError::SandboxLaunch {
                 detail: "浏览器未能在 30 秒内开启调试端口，数据目录可能被占用。".into(),
             },
             ChameleonError::BrowserExitedInstantly => ChameleonError::SandboxLaunch {
                 detail: "浏览器启动后立即退出，数据目录可能被另一个 Chrome 占用。".into(),
             },
-            ChameleonError::LaunchFailed { detail } | ChameleonError::CdpConnectFailed { detail } => {
+            ChameleonError::LaunchFailed { detail }
+            | ChameleonError::CdpConnectFailed { detail } => {
                 ChameleonError::SandboxLaunch { detail }
             }
             _ => ChameleonError::SandboxLaunch {
                 detail: "浏览器未能以调试模式启动。".into(),
             },
-        })?;
+        }
+    })?;
     let dir_for_cleanup = dir.clone();
     tokio::spawn(async move {
         use futures::StreamExt;
@@ -87,7 +92,11 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
     });
     session.sandboxes.insert(
         id.clone(),
-        RunningSandbox { id: id.clone(), dir: dir.clone(), browser },
+        RunningSandbox {
+            id: id.clone(),
+            dir: dir.clone(),
+            browser,
+        },
     );
     Ok(SandboxInfo { id, dir })
 }
@@ -113,10 +122,12 @@ pub fn cleanup_orphans(session_live_ids: &[String], cfg: &GlobalConfig) -> Resul
         return Ok(0);
     }
     let mut removed = 0;
-    for entry in fs::read_dir(&root)
-        .map_err(|e| ChameleonError::Io { detail: e.to_string() })?
-    {
-        let entry = entry.map_err(|e| ChameleonError::Io { detail: e.to_string() })?;
+    for entry in fs::read_dir(&root).map_err(|e| ChameleonError::Io {
+        detail: e.to_string(),
+    })? {
+        let entry = entry.map_err(|e| ChameleonError::Io {
+            detail: e.to_string(),
+        })?;
         let p = entry.path();
         if !p.is_dir() || !p.join(SANDBOX_MARKER).exists() {
             continue;

@@ -5,11 +5,14 @@
 //! 测试环境变量：`CHAMELEON_NO_SANDBOX=1`（snap chromium / root / CI 需要）。
 
 use chameleon_core::{
-    batch, config::ConfigStore,
+    batch,
+    config::ConfigStore,
     handoff::HandoffMode,
     launcher,
     model::{GlobalConfig, QuickLink, Role, WindowRect},
-    ports, sandbox, snapshot::SnapshotStore, safety, Session,
+    ports, safety, sandbox,
+    snapshot::SnapshotStore,
+    Session,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Once};
@@ -39,9 +42,13 @@ fn browser_available() -> bool {
 async fn fixture_role(name: &str) -> (tempfile::TempDir, ConfigStore, GlobalConfig, Role) {
     let dir = tempdir().unwrap();
     let store = ConfigStore::new(dir.path().join("config.json"));
-    let mut cfg = GlobalConfig::default();
-    cfg.data_root = dir.path().join("data");
-    let role = store.create_role(&mut cfg, name.into(), "#e74c3c".into()).unwrap();
+    let mut cfg = GlobalConfig {
+        data_root: dir.path().join("data"),
+        ..Default::default()
+    };
+    let role = store
+        .create_role(&mut cfg, name.into(), "#e74c3c".into())
+        .unwrap();
     (dir, store, cfg, role)
 }
 
@@ -55,18 +62,26 @@ async fn launch_open_tab_read_url_and_close() {
     let (_dir, store, mut cfg, role) = fixture_role("管理员").await;
     let mut session = Session::default();
 
-    launcher::launch_role(&mut session, &cfg, &role, true).await.expect("launch");
+    launcher::launch_role(&mut session, &cfg, &role, true)
+        .await
+        .expect("launch");
     assert!(session.is_role_running(&role.id));
 
     let url = "https://example.com/";
-    launcher::open_tab(&mut session, &cfg, &role.id, url).await.expect("open tab");
+    launcher::open_tab(&mut session, &cfg, &role.id, url)
+        .await
+        .expect("open tab");
 
     // 给页面一点导航时间
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    let got = launcher::read_active_tab(&session, &role.id).await.expect("read url");
+    let got = launcher::read_active_tab(&session, &role.id)
+        .await
+        .expect("read url");
     assert!(got.contains("example.com"), "got url: {got}");
 
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.expect("close");
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .expect("close");
     assert!(!session.is_role_running(&role.id));
 }
 
@@ -88,12 +103,21 @@ async fn handoff_parallel_keeps_source() {
     cfg.roles.push(tgt.clone());
 
     let mut session = Session::default();
-    launcher::launch_role(&mut session, &cfg, &src, true).await.unwrap();
-    launcher::open_tab(&mut session, &cfg, &src.id, "https://example.com/").await.unwrap();
+    launcher::launch_role(&mut session, &cfg, &src, true)
+        .await
+        .unwrap();
+    launcher::open_tab(&mut session, &cfg, &src.id, "https://example.com/")
+        .await
+        .unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     let url = chameleon_core::handoff::handoff(
-        &mut session, &store, &mut cfg, &src.id, &tgt.id, HandoffMode::Parallel,
+        &mut session,
+        &store,
+        &mut cfg,
+        &src.id,
+        &tgt.id,
+        HandoffMode::Parallel,
     )
     .await
     .expect("handoff parallel");
@@ -104,8 +128,12 @@ async fn handoff_parallel_keeps_source() {
     assert!(session.is_role_running(&tgt.id), "target started");
 
     // 清理
-    launcher::close_role(&mut session, &store, &mut cfg, &src.id).await.ok();
-    launcher::close_role(&mut session, &store, &mut cfg, &tgt.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &src.id)
+        .await
+        .ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &tgt.id)
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -125,12 +153,21 @@ async fn handoff_relay_closes_source() {
     cfg.roles.push(tgt.clone());
 
     let mut session = Session::default();
-    launcher::launch_role(&mut session, &cfg, &src, true).await.unwrap();
-    launcher::open_tab(&mut session, &cfg, &src.id, "https://example.com/").await.unwrap();
+    launcher::launch_role(&mut session, &cfg, &src, true)
+        .await
+        .unwrap();
+    launcher::open_tab(&mut session, &cfg, &src.id, "https://example.com/")
+        .await
+        .unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     chameleon_core::handoff::handoff(
-        &mut session, &store, &mut cfg, &src.id, &tgt.id, HandoffMode::Relay,
+        &mut session,
+        &store,
+        &mut cfg,
+        &src.id,
+        &tgt.id,
+        HandoffMode::Relay,
     )
     .await
     .expect("handoff relay");
@@ -139,7 +176,9 @@ async fn handoff_relay_closes_source() {
     assert!(!session.is_role_running(&src.id), "relay closes source");
     assert!(session.is_role_running(&tgt.id), "target remains");
 
-    launcher::close_role(&mut session, &store, &mut cfg, &tgt.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &tgt.id)
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -149,15 +188,21 @@ async fn sandbox_lifecycle_deletes_dir() {
         return;
     }
     let dir = tempdir().unwrap();
-    let mut cfg = GlobalConfig::default();
-    cfg.data_root = dir.path().join("data");
+    let cfg = GlobalConfig {
+        data_root: dir.path().join("data"),
+        ..Default::default()
+    };
     let mut session = Session::default();
 
-    let info = sandbox::launch(&mut session, &cfg).await.expect("sandbox launch");
+    let info = sandbox::launch(&mut session, &cfg)
+        .await
+        .expect("sandbox launch");
     assert!(info.dir.exists(), "sandbox dir created");
     assert!(sandbox::is_sandbox_dir(&info.dir), "marker present");
 
-    sandbox::close(&mut session, &info.id).await.expect("sandbox close");
+    sandbox::close(&mut session, &info.id)
+        .await
+        .expect("sandbox close");
     assert!(!info.dir.exists(), "sandbox dir deleted on close");
     assert!(!session.sandboxes.contains_key(&info.id));
 }
@@ -171,8 +216,10 @@ async fn sandbox_dir_deleted_when_browser_exits_unassisted() {
         return;
     }
     let dir = tempdir().unwrap();
-    let mut cfg = GlobalConfig::default();
-    cfg.data_root = dir.path().join("data");
+    let cfg = GlobalConfig {
+        data_root: dir.path().join("data"),
+        ..Default::default()
+    };
     let mut session = Session::default();
     let info = sandbox::launch(&mut session, &cfg).await.expect("launch");
     assert!(info.dir.exists());
@@ -188,14 +235,19 @@ async fn sandbox_dir_deleted_when_browser_exits_unassisted() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
-    assert!(!info.dir.exists(), "monitor should delete dir after browser exit");
+    assert!(
+        !info.dir.exists(),
+        "monitor should delete dir after browser exit"
+    );
 }
 
 #[tokio::test]
 async fn sandbox_orphan_cleanup() {
     let dir = tempdir().unwrap();
-    let mut cfg = GlobalConfig::default();
-    cfg.data_root = dir.path().join("data");
+    let cfg = GlobalConfig {
+        data_root: dir.path().join("data"),
+        ..Default::default()
+    };
     // 手造一个孤儿沙箱目录（带标记）
     let orphan = cfg.data_root.join("sandbox").join("dead-uuid");
     std::fs::create_dir_all(&orphan).unwrap();
@@ -221,24 +273,44 @@ async fn snapshot_save_and_restore() {
     let snaps = SnapshotStore::new(&snap_dir);
     let mut session = Session::default();
 
-    launcher::launch_role(&mut session, &cfg, &role, true).await.unwrap();
-    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/").await.unwrap();
+    launcher::launch_role(&mut session, &cfg, &role, true)
+        .await
+        .unwrap();
+    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/")
+        .await
+        .unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    snaps.save(&mut session, &store, &mut cfg, "回归1").await.expect("save snapshot");
+    snaps
+        .save(&mut session, &store, &mut cfg, "回归1")
+        .await
+        .expect("save snapshot");
     let list = snaps.list().unwrap();
     assert!(list.contains(&"回归1".to_string()));
 
     // 关闭角色后恢复
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
     assert!(!session.is_role_running(&role.id));
 
-    snaps.restore(&mut session, &store, &mut cfg, "回归1").await.expect("restore");
-    assert!(session.is_role_running(&role.id), "role restarted by restore");
+    snaps
+        .restore(&mut session, &store, &mut cfg, "回归1")
+        .await
+        .expect("restore");
+    assert!(
+        session.is_role_running(&role.id),
+        "role restarted by restore"
+    );
     let urls = launcher::list_tab_urls(&session, &role.id).await;
-    assert!(urls.iter().any(|u| u.contains("example.com")), "tab reopened: {urls:?}");
+    assert!(
+        urls.iter().any(|u| u.contains("example.com")),
+        "tab reopened: {urls:?}"
+    );
 
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
     snaps.delete("回归1").unwrap();
 }
 
@@ -247,8 +319,10 @@ async fn default_dir_role_refused_on_launch() {
     ensure_env();
     // 即使有浏览器，指向默认配置目录的角色必须被拒绝启动
     let dir = tempdir().unwrap();
-    let mut cfg = GlobalConfig::default();
-    cfg.data_root = dir.path().join("data");
+    let mut cfg = GlobalConfig {
+        data_root: dir.path().join("data"),
+        ..Default::default()
+    };
     let bad = Role::new(
         "危险角色".into(),
         "#000".into(),
@@ -269,15 +343,22 @@ async fn default_dir_role_refused_on_launch() {
 fn window_rect_serializes_in_launch_args() {
     // 验证 build_config 路径（经 launch_role 内部）：有 window_rect 时不报错。
     // 这里只验证 safety 校验逻辑与 WindowRect 模型可往返。
-    let mut cfg = GlobalConfig::default();
-    cfg.data_root = PathBuf::from("/tmp/data");
+    let mut cfg = GlobalConfig {
+        data_root: PathBuf::from("/tmp/data"),
+        ..Default::default()
+    };
     let mut role = Role::new(
         "位置角色".into(),
         "#fff".into(),
         cfg.data_root.join("pos"),
         9555,
     );
-    role.window_rect = Some(WindowRect { x: 100, y: 50, width: 800, height: 600 });
+    role.window_rect = Some(WindowRect {
+        x: 100,
+        y: 50,
+        width: 800,
+        height: 600,
+    });
     cfg.roles.push(role.clone());
     assert!(safety::validate_role(&role, &cfg).is_ok());
 }
@@ -292,19 +373,32 @@ async fn close_all_closes_sandbox() {
         return;
     }
     let dir = tempdir().unwrap();
-    let cfg = GlobalConfig { data_root: dir.path().join("data"), ..GlobalConfig::default() };
+    let cfg = GlobalConfig {
+        data_root: dir.path().join("data"),
+        ..GlobalConfig::default()
+    };
     let mut sess = Session::default();
     let store = ConfigStore::new(dir.path().join("config.json"));
 
-    let info = sandbox::launch(&mut sess, &cfg).await.expect("sandbox launch");
+    let info = sandbox::launch(&mut sess, &cfg)
+        .await
+        .expect("sandbox launch");
     assert!(sess.sandboxes.contains_key(&info.id));
     assert!(info.dir.exists(), "sandbox dir created");
 
     let session = Arc::new(tokio::sync::Mutex::new(sess));
-    let res = batch::close_all(session.clone(), store.clone(), Arc::new(tokio::sync::Mutex::new(cfg))).await;
+    let res = batch::close_all(
+        session.clone(),
+        store.clone(),
+        Arc::new(tokio::sync::Mutex::new(cfg)),
+    )
+    .await;
     assert_eq!(res.failed, 0, "close_all errors: {:?}", res.errors);
     assert!(!info.dir.exists(), "sandbox temp dir deleted by close_all");
-    assert!(!session.lock().await.sandboxes.contains_key(&info.id), "sandbox removed from session");
+    assert!(
+        !session.lock().await.sandboxes.contains_key(&info.id),
+        "sandbox removed from session"
+    );
 }
 
 /// #4：快照保存排除角色首页锚点页签（只记真实测试页）。
@@ -316,32 +410,47 @@ async fn snapshot_excludes_role_home_anchor() {
     }
     let (dir, store, mut cfg, role) = fixture_role("锚点排除").await;
     let mut session = Session::default();
-    launcher::launch_role(&mut session, &cfg, &role, true).await.unwrap();
-    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/").await.unwrap();
+    launcher::launch_role(&mut session, &cfg, &role, true)
+        .await
+        .unwrap();
+    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/")
+        .await
+        .unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // 锚点页签被过滤：list_tab_urls 不返回标记 URL
     let urls = launcher::list_tab_urls(&session, &role.id).await;
-    assert!(urls.iter().any(|u| u.contains("example.com")), "real tab present: {urls:?}");
+    assert!(
+        urls.iter().any(|u| u.contains("example.com")),
+        "real tab present: {urls:?}"
+    );
     assert!(
         urls.iter().all(|u| !u.contains("data-chameleon-role-home")),
         "anchor must be excluded: {urls:?}"
     );
 
     // 快照落盘后的 tabs 同样不含锚点
-    let snaps = SnapshotStore::new(&dir.path().join("snapshots"));
-    snaps.save(&mut session, &store, &mut cfg, "无锚点").await.unwrap();
+    let snaps = SnapshotStore::new(dir.path().join("snapshots"));
+    snaps
+        .save(&mut session, &store, &mut cfg, "无锚点")
+        .await
+        .unwrap();
     let raw = std::fs::read_to_string(dir.path().join("snapshots/无锚点.json")).unwrap();
     let snap: chameleon_core::model::Snapshot = serde_json::from_str(&raw).unwrap();
     let role_tabs = snap.roles.iter().find(|r| r.role_id == role.id).unwrap();
     assert!(role_tabs.tabs.iter().any(|u| u.contains("example.com")));
     assert!(
-        role_tabs.tabs.iter().all(|u| !u.contains("data-chameleon-role-home")),
+        role_tabs
+            .tabs
+            .iter()
+            .all(|u| !u.contains("data-chameleon-role-home")),
         "saved snapshot must exclude anchor: {:?}",
         role_tabs.tabs
     );
 
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
 }
 
 /// #4：恢复未运行角色时抑制 auto_open 默认页，只开锚点 + 快照页。
@@ -359,28 +468,45 @@ async fn restore_suppresses_auto_open() {
         auto_open: true,
         login: None,
     });
-    let snaps = SnapshotStore::new(&dir.path().join("snapshots"));
+    let snaps = SnapshotStore::new(dir.path().join("snapshots"));
     let mut session = Session::default();
 
     // 以 auto_open=false 启动（只开锚点），再开一个快照页并保存
-    launcher::launch_role(&mut session, &cfg, &role, false).await.unwrap();
-    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/").await.unwrap();
+    launcher::launch_role(&mut session, &cfg, &role, false)
+        .await
+        .unwrap();
+    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/")
+        .await
+        .unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    snaps.save(&mut session, &store, &mut cfg, "恢复抑制").await.unwrap();
+    snaps
+        .save(&mut session, &store, &mut cfg, "恢复抑制")
+        .await
+        .unwrap();
 
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
     assert!(!session.is_role_running(&role.id));
 
     // 恢复：窗口应只有锚点 + example.com，无 auto-open 默认页
-    snaps.restore(&mut session, &store, &mut cfg, "恢复抑制").await.expect("restore");
+    snaps
+        .restore(&mut session, &store, &mut cfg, "恢复抑制")
+        .await
+        .expect("restore");
     let urls = launcher::list_tab_urls(&session, &role.id).await;
-    assert!(urls.iter().any(|u| u.contains("example.com")), "snapshot page reopened: {urls:?}");
+    assert!(
+        urls.iter().any(|u| u.contains("example.com")),
+        "snapshot page reopened: {urls:?}"
+    );
     assert!(
         urls.iter().all(|u| !u.contains("auto-open.example")),
         "auto_open preset must NOT be reopened: {urls:?}"
     );
 
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
 }
 
 /// #4：恢复后角色首页锚点仍在（窗口标题含角色名）。
@@ -394,16 +520,28 @@ async fn restore_preserves_anchor() {
         return;
     }
     let (dir, store, mut cfg, role) = fixture_role("锚点保留").await;
-    let snaps = SnapshotStore::new(&dir.path().join("snapshots"));
+    let snaps = SnapshotStore::new(dir.path().join("snapshots"));
     let mut session = Session::default();
 
-    launcher::launch_role(&mut session, &cfg, &role, false).await.unwrap();
-    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/").await.unwrap();
+    launcher::launch_role(&mut session, &cfg, &role, false)
+        .await
+        .unwrap();
+    launcher::open_tab(&mut session, &cfg, &role.id, "https://example.com/")
+        .await
+        .unwrap();
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    snaps.save(&mut session, &store, &mut cfg, "留锚点").await.unwrap();
+    snaps
+        .save(&mut session, &store, &mut cfg, "留锚点")
+        .await
+        .unwrap();
 
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
-    snaps.restore(&mut session, &store, &mut cfg, "留锚点").await.expect("restore");
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
+    snaps
+        .restore(&mut session, &store, &mut cfg, "留锚点")
+        .await
+        .expect("restore");
 
     // 锚点页签仍在，且标题含角色名
     // TODO: rewrite using list_tab_urls or similar current API
@@ -414,7 +552,9 @@ async fn restore_preserves_anchor() {
     // let title = page.get_title().await.ok().flatten().unwrap_or_default();
     // assert!(title.contains("锚点保留"), "window title keeps role name: {title:?}");
 
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
 }
 
 /// #2：端口被非浏览器/僵尸实例占用且无法接管 → 硬错误、不 spawn 窗口（闪窗回归守卫）。
@@ -437,14 +577,20 @@ async fn port_occupied_non_browser_hard_errors() {
 
     let err = launcher::launch_role(&mut session, &cfg, &role, true).await;
     let err = err.expect_err("port occupied by non-browser must hard-error");
-    assert!(matches!(err, chameleon_core::ChameleonError::PortTakenNotRole { .. }));
+    assert!(matches!(
+        err,
+        chameleon_core::ChameleonError::PortTakenNotRole { .. }
+    ));
     assert!(
         err.message().contains("一键关闭所有"),
         "error must guide user to 一键关闭: {}",
         err.message()
     );
     // 不 spawn 任何新窗口
-    assert!(!session.is_role_running(&role.id), "no window may be spawned");
+    assert!(
+        !session.is_role_running(&role.id),
+        "no window may be spawned"
+    );
 }
 
 /// 工单：用户直接关闭浏览器后程序应感知（prune_dead_roles 清理死角色），
@@ -457,7 +603,9 @@ async fn role_pruned_after_browser_closed_externally() {
     }
     let (_dir, _store, cfg, role) = fixture_role("外部关闭").await;
     let mut session = Session::default();
-    launcher::launch_role(&mut session, &cfg, &role, false).await.expect("launch");
+    launcher::launch_role(&mut session, &cfg, &role, false)
+        .await
+        .expect("launch");
     assert!(session.is_role_running(&role.id));
     // 模拟用户直接关浏览器：不走 close_role，程序未感知，session 仍持死句柄
     {
@@ -466,10 +614,16 @@ async fn role_pruned_after_browser_closed_externally() {
     }
     // 给 handler 流结束一点时间
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-    assert!(session.is_role_running(&role.id), "bug: stale entry remains");
+    assert!(
+        session.is_role_running(&role.id),
+        "bug: stale entry remains"
+    );
     let removed = launcher::prune_dead_roles(&mut session).await;
     assert_eq!(removed, 1, "dead role should be pruned");
-    assert!(!session.is_role_running(&role.id), "role removed after prune");
+    assert!(
+        !session.is_role_running(&role.id),
+        "role removed after prune"
+    );
 }
 
 /// close_role 后端口应真正释放，紧接的启动不应误判为僵尸占用（CI 闪窗回归守卫）。
@@ -481,12 +635,19 @@ async fn close_role_releases_port_for_immediate_relaunch() {
     }
     let (dir, store, mut cfg, role) = fixture_role("端口释放").await;
     let mut session = Session::default();
-    launcher::launch_role(&mut session, &cfg, &role, false).await.expect("launch");
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.expect("close");
+    launcher::launch_role(&mut session, &cfg, &role, false)
+        .await
+        .expect("launch");
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .expect("close");
     // 紧接在同一端口重启 —— 修复前会因端口未释放误判为僵尸占用 → PortTakenNotRole
-    launcher::launch_role(&mut session, &cfg, &role, false).await
+    launcher::launch_role(&mut session, &cfg, &role, false)
+        .await
         .expect("relaunch on same port must succeed after close_role released it");
     assert!(session.is_role_running(&role.id));
-    launcher::close_role(&mut session, &store, &mut cfg, &role.id).await.ok();
+    launcher::close_role(&mut session, &store, &mut cfg, &role.id)
+        .await
+        .ok();
     let _ = dir;
 }
