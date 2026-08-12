@@ -16,8 +16,8 @@ export const tauri = {
   getState: () => invoke<AppStateView>("get_state"),
 
   // —— 角色管理 ——
-  createRole: (name: string, color: string) =>
-    invoke<Role>("create_role", { name, color }),
+  createRole: (name: string, color: string, systemId: string | null) =>
+    invoke<Role>("create_role", { name, color, systemId }),
   updateRole: (role: Role) =>
     invoke<void>("update_role", { role }),
   deleteRole: (id: string) =>

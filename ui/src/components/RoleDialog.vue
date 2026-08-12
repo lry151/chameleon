@@ -146,15 +146,15 @@ async function handleSave() {
       };
       await tauri.updateRole(updated);
     } else {
-      // 新建或克隆：先创建，再补全字段。
-      const created = await tauri.createRole(trimmed, formColor.value);
-      if (formSystemId.value || (props.clone && props.role)) {
-        const sourceLinks = props.clone && props.role ? props.role.quick_links : [];
-        await tauri.updateRole({
-          ...created,
-          system_id: formSystemId.value,
-          quick_links: sourceLinks,
-        });
+      // 新建或克隆：系统归属在创建时确定（数据目录随系统落位）。
+      const sourceLinks = props.clone && props.role ? props.role.quick_links : [];
+      const created = await tauri.createRole(
+        trimmed,
+        formColor.value,
+        formSystemId.value,
+      );
+      if (props.clone && props.role) {
+        await tauri.updateRole({ ...created, quick_links: sourceLinks });
       }
     }
     await loadAppState();
