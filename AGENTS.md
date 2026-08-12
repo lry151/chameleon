@@ -126,15 +126,56 @@ RUST_BACKTRACE=1 timeout 12 /mnt/c/Users/Public/chm.exe   # panic 打到 stderr�
 v0.8.0 的启动闪退（`tokio::spawn` 在非 runtime 线程 panic，`src-tauri/src/lib.rs:712`）
 就是这法子抓的——CI 构建一个 Windows 轮次 ~10min，本地 WSL 跑 exe 秒级出 panic。
 
-### exe 从哪来（关键：必须是 msvc，不能是 gnu）
+### 本地 msvc 交叉构建（全本地闭环）
 
-- **CI 构建的 msvc portable**（推荐）：release.yml 产出的 `*_x64-portable.zip`，
-  msvc 目标静态链接 WebView2Loader（单文件可跑、能到 Rust 代码）。下载解压即冒烟。
-- **本地 msvc 交叉构建**：`cargo build --release --target x86_64-pc-windows-msvc -p chameleon-app`
-  ——需 `link.exe`（VS Build Tools）或 `lld-link`+`xwin`，WSL 默认未装；装好后可全本地闭环。
-- **gnu 交叉构建不可用于启动验证**：`x86_64-pc-windows-gnu` 目标动态链接 `WebView2Loader.dll`，
-  exe 启动即报"找不到 WebView2Loader.dll"、根本到不了 Rust 代码——与 msvc 发布版不等价。
-  （gnu 构建能用来验证纯 Rust 逻辑编译是否过，但验证不了 Windows 运行时行为。）
+**前提**（一次性安装）：
+```bash
+# 1. cargo-xwin（拉 MSVC SDK + 用 lld-link）
+cargo install cargo-xwin --locked
+
+# 2. llvm-rc（tauri-winres 嵌 manifest/图标用）
+sudo apt-get install -y llvm && sudo ln -sf "$(ls /usr/bin/llvm-rc-* | sort -V | tail -1)" /usr/local/bin/llvm-rc
+
+# 3. clang-cl（cc-rs 编译 C 代码用）
+# 方案 A：x pixi（无 sudo）
+. ~/.x-cmd.root/X && x pixi use clang
+# 方案 B：apt（需 sudo）
+sudo apt-get install -y clang && sudo ln -sf "$(which clang)" /usr/local/bin/clang-cl
+```
+
+**构建命令**：
+```bash
+cd /home/kuuga/projects/chameleon
+PATH="$HOME/.pixi/bin:$PATH" cargo xwin build --release --target x86_64-pc-windows-msvc -p chameleon-app
+# 产物：target/x86_64-pc-windows-msvc/release/chameleon-app.exe（~15MB，静态链接 WebView2Loader）
+```
+
+**验证**：
+```bash
+cp target/x86_64-pc-windows-msvc/release/chameleon-app.exe /mnt/c/Users/Public/chm.exe
+RUST_BACKTRACE=1 timeout 15 /mnt/c/Users/Public/chm.exe
+# 无 panic + 窗口正常弹出 = GREEN
+```
+
+### exe 来源对比
+
+| 来源 | WebView2 | 启动验证 | 推荐场景 |
+|---|---|---|---|
+| **本地 xwin msvc** | 静态链接 ✅ | ✅ 能到 Rust | 发版前本地验证 |
+| **CI msvc portable** | 静态链接 ✅ | ✅ 能到 Rust | 下载 release 产物验证 |
+| **gnu 交叉构建** | 动态链接 ❌ | ❌ DLL 缺失 | 仅验证 Rust 逻辑编译 |
+
+### 踩坑记录
+
+1. **`tokio::spawn` 在 Tauri setup 里 panic**（v0.8.0）
+   - 根因：setup 回调在事件循环线程执行，Windows 上该线程未 enter tokio runtime
+   - 修复：改用 `tauri::async_runtime::spawn`（走全局 runtime 句柄，不依赖 thread-local）
+   - 模式：与 `lib.rs:690` quit 菜单回调同款
+
+2. **release exe 弹 Edge localhost 报错**（v0.8.1）
+   - 根因：`tauri.conf.json` 的 `devUrl: "http://localhost:1420"` 被嵌入 release exe，webview 加载 `http://localhost:1420/www` 而非内嵌 `www/`
+   - 修复：分离配置文件——`tauri.conf.json`（生产）只放 `frontendDist: "www"`；`tauri.dev.conf.json`（开发）放 `devUrl` + `beforeDevCommand`
+   - 原理：`cargo tauri dev` 合并两文件（devUrl 生效）；`cargo tauri build` 只读基础配置（devUrl 不嵌入）
 
 ## 验证清单
 
