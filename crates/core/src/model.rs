@@ -117,7 +117,8 @@ pub enum ThemeMode {
 
 impl Default for ThemeMode {
     fn default() -> Self {
-        Self::Dark
+        // 新装默认跟随系统：避免深色/浅色与 Windows 主题割裂。
+        Self::System
     }
 }
 
@@ -134,7 +135,7 @@ pub struct UiPreferences {
 impl Default for UiPreferences {
     fn default() -> Self {
         Self {
-            theme: ThemeMode::Dark,
+            theme: ThemeMode::System,
             panel_opacity: 0.72,
             accent_color: "#1abc9c".into(),
         }
