@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn ui_preferences_default_values() {
         let prefs = UiPreferences::default();
-        assert_eq!(prefs.theme, ThemeMode::Dark);
+        assert_eq!(prefs.theme, ThemeMode::System);
         assert!((prefs.panel_opacity - 0.72).abs() < f32::EPSILON);
         assert_eq!(prefs.accent_color, "#1abc9c");
     }
@@ -432,7 +432,7 @@ mod tests {
         fs::write(&path, old_json).unwrap();
         let store = ConfigStore::new(&path);
         let cfg = store.load().unwrap();
-        assert_eq!(cfg.ui_preferences.theme, ThemeMode::Dark);
+        assert_eq!(cfg.ui_preferences.theme, ThemeMode::System);
         assert!((cfg.ui_preferences.panel_opacity - 0.72).abs() < f32::EPSILON);
         assert_eq!(cfg.ui_preferences.accent_color, "#1abc9c");
     }

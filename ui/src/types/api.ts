@@ -13,7 +13,7 @@ export interface UiPreferences {
 }
 
 export const DEFAULT_PREFS: UiPreferences = {
-  theme: "Dark",
+  theme: "System",
   panel_opacity: 0.72,
   accent_color: "#1abc9c",
 };

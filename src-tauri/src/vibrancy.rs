@@ -214,6 +214,19 @@ let mut key = HKEY::default();
     Some(data)
 }
 
+/// Mica 应使用的 dark tint 参数。
+///
+/// `plan_vibrancy` 只在有效深色下产出 [`VibrancyPlan::Mica`]，故恒强制深色 tint
+/// (`Some(true)`)。传 `None` 会让 DWM 跟随系统主题：系统浅色时渲染浅色 Mica，
+/// 深色半透面板透出浅色底 → 面板发白（曾出现的 UI bug）。
+#[allow(dead_code)] // 仅 cfg(windows) 的 apply 调用；单元测试覆盖。
+pub fn mica_dark(plan: VibrancyPlan) -> Option<bool> {
+    match plan {
+        VibrancyPlan::Mica => Some(true),
+        VibrancyPlan::AcrylicDark | VibrancyPlan::Clear => None,
+    }
+}
+
 /// 把 [`VibrancyPlan`] 作用到窗口。非 Windows 是 no-op（返回 Ok）。
 pub fn apply(window: &tauri::WebviewWindow, plan: VibrancyPlan) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -222,7 +235,7 @@ pub fn apply(window: &tauri::WebviewWindow, plan: VibrancyPlan) -> Result<(), St
         // 先清空：避免旧 vibrancy 残留与新 plan 叠加。
         let _ = clear_vibrancy(window);
         match plan {
-            VibrancyPlan::Mica => apply_mica(window, None)
+            VibrancyPlan::Mica => apply_mica(window, mica_dark(plan))
                 .map_err(|e| format!("apply_mica 失败: {e}")),
             VibrancyPlan::AcrylicDark => apply_acrylic(window, Some((33, 31, 41, 180)))
                 .map_err(|e| format!("apply_acrylic 失败: {e}")),
@@ -290,6 +303,13 @@ mod tests {
             plan_vibrancy(ThemeMode::System, false, OsFlavor::Win10),
             VibrancyPlan::AcrylicDark
         );
+    }
+
+    #[test]
+    fn mica_forces_dark_tint_regardless_of_system_theme() {
+        // 回归：系统浅色 + 应用深色 → 计划 Mica。若 Mica tint 跟随系统（None），
+        // DWM 渲染浅色 Mica，深色半透面板透出浅色底 → 面板发白。必须强制 Some(true)。
+        assert_eq!(mica_dark(VibrancyPlan::Mica), Some(true));
     }
 
     #[test]
