@@ -27,19 +27,12 @@
             :role="roleDialogTarget"
             :clone="roleDialogClone"
             @saved="refresh"
-            @manage-links="openRoleLinks"
           />
           <SystemDialog
             v-model:show="showSystem"
             :system-id="systemDialogId"
             :system-name="systemDialogName"
             @saved="refresh"
-            @manage-links="openSystemLinks"
-          />
-          <LinksDialog
-            v-model:show="showLinks"
-            :owner-id="linksOwnerId"
-            :owner-kind="linksOwnerKind"
           />
         </n-message-provider>
       </n-dialog-provider>
@@ -55,7 +48,6 @@ import MainView from "./views/MainView.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import RoleDialog from "./components/RoleDialog.vue";
 import SystemDialog from "./components/SystemDialog.vue";
-import LinksDialog from "./components/LinksDialog.vue";
 import ExitWatcher from "./components/ExitWatcher.vue";
 import { useTheme } from "./composables/useTheme";
 import { loadPrefs } from "./composables/usePrefs";
@@ -101,22 +93,6 @@ function openEditSystem(system: System) {
   systemDialogId.value = system.id;
   systemDialogName.value = system.name;
   showSystem.value = true;
-}
-
-// LinksDialog
-const showLinks = ref(false);
-const linksOwnerId = ref("");
-const linksOwnerKind = ref<"role" | "system">("role");
-
-function openRoleLinks(roleId: string) {
-  linksOwnerId.value = roleId;
-  linksOwnerKind.value = "role";
-  showLinks.value = true;
-}
-function openSystemLinks(systemId: string) {
-  linksOwnerId.value = systemId;
-  linksOwnerKind.value = "system";
-  showLinks.value = true;
 }
 
 async function refresh() {

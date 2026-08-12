@@ -3,140 +3,162 @@
     :show="show"
     preset="card"
     title="管理预设"
-    :style="{ width: '600px' }"
+    :style="{ width: '640px' }"
     :mask-closable="true"
     @update:show="onUpdateShow"
   >
-    <n-form
-      :model="formState"
-      label-placement="top"
-      class="links-form"
-    >
-      <!-- 名称 -->
-      <n-form-item label="名称">
-        <n-input
-          v-model:value="formState.name"
-          type="text"
-          placeholder="给这个预设取个名字（如：测试环境-管理后台）"
-          clearable
-        />
-      </n-form-item>
-
-      <!-- URL 字段 -->
-      <n-form-item label="URL">
-        <n-input
-          v-model:value="formState.url"
-          type="text"
-          placeholder="https://example.com"
-          clearable
-        />
-      </n-form-item>
-
-      <!-- 启动时自动打开 -->
-      <n-form-item>
-        <n-checkbox v-model:checked="formState.autoOpen">
-          启动时自动打开
-        </n-checkbox>
-      </n-form-item>
-
-      <!-- 含登录辅助（仅角色级） -->
-      <n-form-item v-if="isRole">
-        <n-checkbox v-model:checked="formState.hasLogin">
-          含登录辅助
-        </n-checkbox>
-      </n-form-item>
-
-      <!-- 登录辅助字段（条件展开，缩进 16px） -->
-      <div v-if="isRole && formState.hasLogin" class="login-assist-fields">
-        <n-form-item label="用户名">
-          <n-input
-            v-model:value="formState.username"
-            type="text"
-            placeholder="登录用户名"
-            clearable
-          />
-        </n-form-item>
-        <n-form-item label="输入框选择器">
-          <n-input
-            v-model:value="formState.usernameSelector"
-            type="text"
-            placeholder="CSS 选择器，如 #username 或 input[name=email]"
-            clearable
-          />
-        </n-form-item>
-        <n-button
-          :disabled="!canTestLogin"
-          :loading="testingLogin"
-          @click="handleTestLogin"
-        >
-          测试登录
-        </n-button>
-      </div>
-
-      <!-- 添加 / 保存按钮 -->
-      <div class="form-submit">
-        <n-button
-          type="primary"
-          :disabled="!canSubmit"
-          :loading="submitting"
-          @click="handleSubmit"
-        >
-          {{ editingId ? "保存" : "添加预设" }}
-        </n-button>
-      </div>
-    </n-form>
-
-    <n-divider />
-
-    <!-- 已有预设列表 -->
     <div class="preset-list">
-      <n-text v-if="currentLinks.length === 0" depth="3">
-        暂无预设
-      </n-text>
+      <!-- 空态 -->
+      <n-empty
+        v-if="currentLinks.length === 0 && !creating"
+        description="暂无预设"
+        size="small"
+      />
+
+      <!-- 已有预设列表 + 新增空行（合并在同一渲染路径，编辑/新增共用一套行内表单） -->
       <div
-        v-for="link in currentLinks"
+        v-for="link in displayRows"
         :key="link.id"
         class="preset-row"
+        :class="{ 'preset-row--open': expandedId === link.id }"
       >
-        <div class="preset-text">
-          <span class="preset-name" :title="link.name || link.url">
-            {{ link.name || '未命名' }}
-          </span>
-          <span class="preset-url" :title="link.url">
-            {{ link.url }}
-          </span>
-        </div>
-        <n-checkbox
-          :checked="link.auto_open"
-          disabled
-          size="small"
-        >
-          启动
-        </n-checkbox>
-        <n-button size="tiny" quaternary @click="startEdit(link)">
-          编辑
-        </n-button>
-        <n-popconfirm
-          :show="deleteTarget === link.id"
-          positive-text="删除"
-          negative-text="取消"
-          @positive-click="doRemove(link.id)"
-          @negative-click="deleteTarget = null"
-          @click-outside="deleteTarget = null"
-        >
-          <template #trigger>
-            <n-button
-              size="tiny"
-              quaternary
-              type="error"
-              @click="deleteTarget = link.id"
-            >
-              ×
-            </n-button>
-          </template>
-          确定删除预设「{{ link.name || link.url }}」？
-        </n-popconfirm>
+        <!-- 折叠态：一行摘要 -->
+        <template v-if="expandedId !== link.id">
+          <div class="preset-text" @click="expand(link.id)">
+            <span class="preset-name" :title="link.name || link.url">
+              {{ link.name || '未命名' }}
+            </span>
+            <span class="preset-url" :title="link.url">
+              {{ link.url }}
+            </span>
+          </div>
+          <n-checkbox :checked="link.auto_open" disabled size="small">
+            启动
+          </n-checkbox>
+          <n-button size="tiny" quaternary @click="expand(link.id)">
+            编辑
+          </n-button>
+          <n-popconfirm
+            :show="deleteTarget === link.id"
+            positive-text="删除"
+            negative-text="取消"
+            @positive-click="doRemove(link.id)"
+            @negative-click="deleteTarget = null"
+            @click-outside="deleteTarget = null"
+          >
+            <template #trigger>
+              <n-button
+                size="tiny"
+                quaternary
+                type="error"
+                @click="deleteTarget = link.id"
+              >
+                ×
+              </n-button>
+            </template>
+            确定删除预设「{{ link.name || link.url }}」？
+          </n-popconfirm>
+        </template>
+
+        <!-- 展开态：行内编辑 -->
+        <template v-else>
+          <n-form label-placement="top" class="preset-edit-form">
+            <n-form-item label="名称">
+              <n-input
+                v-model:value="draft.name"
+                type="text"
+                placeholder="给这个预设取个名字（可留空，用 URL 代替）"
+                clearable
+              />
+            </n-form-item>
+            <n-form-item label="URL">
+              <n-input
+                v-model:value="draft.url"
+                type="text"
+                placeholder="https://example.com"
+                clearable
+              />
+            </n-form-item>
+            <n-form-item>
+              <n-checkbox v-model:checked="draft.autoOpen">
+                启动时自动打开
+              </n-checkbox>
+            </n-form-item>
+
+            <!-- 含登录辅助（仅角色级） -->
+            <n-form-item v-if="isRole">
+              <n-checkbox v-model:checked="draft.hasLogin">
+                含登录辅助
+              </n-checkbox>
+            </n-form-item>
+
+            <!-- 登录辅助字段：用户名 + 密码（主区必填），选择器（高级区可选，默认折叠） -->
+            <div v-if="isRole && draft.hasLogin" class="login-assist-fields">
+              <n-form-item label="用户名">
+                <n-input
+                  v-model:value="draft.username"
+                  type="text"
+                  placeholder="登录用户名"
+                  clearable
+                />
+              </n-form-item>
+              <n-form-item label="密码">
+                <n-input
+                  v-model:value="draft.password"
+                  type="password"
+                  show-password-on="click"
+                  placeholder="登录密码"
+                  clearable
+                />
+              </n-form-item>
+              <n-button
+                size="tiny"
+                quaternary
+                class="advanced-toggle"
+                @click="advancedOpen = !advancedOpen"
+              >
+                {{ advancedOpen ? "收起高级选项 ▴" : "高级选项 ▾" }}
+              </n-button>
+              <div v-show="advancedOpen" class="login-advanced">
+                <n-form-item label="用户名选择器">
+                  <n-input
+                    v-model:value="draft.usernameSelector"
+                    type="text"
+                    placeholder="CSS 选择器，如 #username"
+                    clearable
+                  />
+                </n-form-item>
+                <n-form-item label="密码选择器">
+                  <n-input
+                    v-model:value="draft.passwordSelector"
+                    type="text"
+                    placeholder="CSS 选择器，如 #password"
+                    clearable
+                  />
+                </n-form-item>
+              </div>
+            </div>
+
+            <div class="preset-edit-actions">
+              <n-button
+                type="primary"
+                size="small"
+                :disabled="!canSaveDraft"
+                :loading="savingId === link.id"
+                @click="saveDraft"
+              >
+                {{ creating ? "添加" : "保存" }}
+              </n-button>
+              <n-button size="small" @click="collapse">取消</n-button>
+            </div>
+          </n-form>
+        </template>
       </div>
+
+      <!-- 新增入口：列表底部空行 -->
+      <n-button v-if="!creating" block dashed @click="startCreate">
+        + 添加预设
+      </n-button>
     </div>
   </n-modal>
 </template>
@@ -162,30 +184,36 @@ const message = useMessage();
 
 const isRole = computed(() => props.ownerKind === "role");
 
-/// 表单状态。
-interface FormState {
+/// 行内编辑表单状态。
+interface Draft {
   name: string;
   url: string;
   autoOpen: boolean;
   hasLogin: boolean;
   username: string;
+  password: string;
   usernameSelector: string;
+  passwordSelector: string;
 }
 
-const formState = ref<FormState>({
+const draft = ref<Draft>({
   name: "",
   url: "",
   autoOpen: false,
   hasLogin: false,
   username: "",
+  password: "",
   usernameSelector: "",
+  passwordSelector: "",
 });
 
-/// 编辑模式：记录正在编辑的预设 id（null = 新增）。
-const editingId = ref<string | null>(null);
-const submitting = ref(false);
-const testingLogin = ref(false);
+/// 展开编辑的预设 id；'__new__' = 底部新增空行。
+const expandedId = ref<string | null>(null);
+const creating = ref(false);
+const savingId = ref<string | null>(null);
 const deleteTarget = ref<string | null>(null);
+/// 高级区（选择器）默认折叠。
+const advancedOpen = ref(false);
 
 /// 当前 owner 的预设列表（从 appState 派生）。
 const currentLinks = computed<QuickLink[]>(() => {
@@ -197,90 +225,121 @@ const currentLinks = computed<QuickLink[]>(() => {
   return sys?.quick_links ?? [];
 });
 
-const canSubmit = computed(() => formState.value.url.trim().length > 0);
+/// 列表渲染 = 已有预设 + 新增空行（新增行恒为展开态）。
+const displayRows = computed<QuickLink[]>(() => {
+  if (!creating.value) return currentLinks.value;
+  return [
+    ...currentLinks.value,
+    { id: "__new__", name: null, url: "", auto_open: false, login: null },
+  ];
+});
 
-const canTestLogin = computed(
-  () =>
-    isRole.value &&
-    formState.value.hasLogin &&
-    formState.value.url.trim().length > 0 &&
-    formState.value.username.trim().length > 0,
-);
+/// 保存条件：URL 必填；勾了登录辅助则用户名 + 密码必填（主区必填）。
+const canSaveDraft = computed(() => {
+  if (!draft.value.url.trim()) return false;
+  if (isRole.value && draft.value.hasLogin) {
+    return (
+      draft.value.username.trim().length > 0 &&
+      draft.value.password.length > 0
+    );
+  }
+  return true;
+});
 
-/// dialog 关闭时重置表单。
+/// dialog 关闭时重置。
 watch(
   () => props.show,
   (visible) => {
-    if (!visible) resetForm();
+    if (!visible) {
+      collapse();
+      resetDraft();
+      deleteTarget.value = null;
+    }
   },
 );
-
-function resetForm() {
-  formState.value = {
-    name: "",
-    url: "",
-    autoOpen: false,
-    hasLogin: false,
-    username: "",
-    usernameSelector: "",
-  };
-  editingId.value = null;
-  deleteTarget.value = null;
-}
 
 function onUpdateShow(value: boolean) {
   emit("update:show", value);
 }
 
-function startEdit(link: QuickLink) {
-  formState.value.name = link.name || '';
-  formState.value.url = link.url;
-  formState.value.autoOpen = link.auto_open;
+function resetDraft() {
+  draft.value = {
+    name: "",
+    url: "",
+    autoOpen: false,
+    hasLogin: false,
+    username: "",
+    password: "",
+    usernameSelector: "",
+    passwordSelector: "",
+  };
+  advancedOpen.value = false;
+}
+
+function collapse() {
+  expandedId.value = null;
+  creating.value = false;
+}
+
+function expand(id: string) {
+  const link = currentLinks.value.find((l) => l.id === id);
+  if (!link) return;
+  draft.value.name = link.name ?? "";
+  draft.value.url = link.url;
+  draft.value.autoOpen = link.auto_open;
   if (link.login) {
-    formState.value.hasLogin = true;
-    formState.value.username = link.login.username;
-    formState.value.usernameSelector = link.login.username_selector ?? '';
+    draft.value.hasLogin = true;
+    draft.value.username = link.login.username;
+    draft.value.password = link.login.password;
+    draft.value.usernameSelector = link.login.username_selector ?? "";
+    draft.value.passwordSelector = link.login.password_selector ?? "";
   } else {
-    formState.value.hasLogin = false;
-    formState.value.username = '';
-    formState.value.usernameSelector = '';
+    draft.value.hasLogin = false;
+    draft.value.username = "";
+    draft.value.password = "";
+    draft.value.usernameSelector = "";
+    draft.value.passwordSelector = "";
   }
-  editingId.value = link.id;
+  advancedOpen.value = false;
+  expandedId.value = id;
+  creating.value = false;
+}
+
+function startCreate() {
+  resetDraft();
+  creating.value = true;
+  expandedId.value = "__new__";
 }
 
 function buildLogin(): QuickLinkLogin | null {
-  if (!isRole.value || !formState.value.hasLogin) return null;
-  if (!formState.value.username.trim()) return null;
+  if (!isRole.value || !draft.value.hasLogin) return null;
+  if (!draft.value.username.trim() || !draft.value.password) return null;
   return {
-    username: formState.value.username.trim(),
-    password: "",
-    username_selector: formState.value.usernameSelector.trim() || null,
-    password_selector: null,
+    username: draft.value.username.trim(),
+    password: draft.value.password,
+    username_selector: draft.value.usernameSelector.trim() || null,
+    password_selector: draft.value.passwordSelector.trim() || null,
   };
 }
 
-async function handleSubmit() {
-  const url = formState.value.url.trim();
+async function saveDraft() {
+  const url = draft.value.url.trim();
   if (!url) return;
-  const name = formState.value.name.trim() || url;
-  const autoOpen = formState.value.autoOpen;
+  const name = draft.value.name.trim() || url;
+  const autoOpen = draft.value.autoOpen;
   const login = buildLogin();
+  const targetId = expandedId.value;
+  if (!targetId) return;
 
-  submitting.value = true;
+  savingId.value = targetId;
   try {
     if (isRole.value) {
-      if (editingId.value) {
+      if (creating.value) {
+        await tauri.addQuickLink(props.ownerId, name, url, autoOpen, login);
+      } else if (targetId !== "__new__") {
         await tauri.editQuickLink(
           props.ownerId,
-          editingId.value,
-          name,
-          url,
-          autoOpen,
-          login,
-        );
-      } else {
-        await tauri.addQuickLink(
-          props.ownerId,
+          targetId,
           name,
           url,
           autoOpen,
@@ -288,17 +347,12 @@ async function handleSubmit() {
         );
       }
     } else {
-      if (editingId.value) {
+      if (creating.value) {
+        await tauri.addSystemQuickLink(props.ownerId, name, url, autoOpen);
+      } else if (targetId !== "__new__") {
         await tauri.editSystemQuickLink(
           props.ownerId,
-          editingId.value,
-          name,
-          url,
-          autoOpen,
-        );
-      } else {
-        await tauri.addSystemQuickLink(
-          props.ownerId,
+          targetId,
           name,
           url,
           autoOpen,
@@ -307,10 +361,11 @@ async function handleSubmit() {
     }
     await loadAppState();
     message.success("预设已保存");
+    collapse();
   } catch (err) {
     notifyBackendError(message, err, "保存预设失败");
   } finally {
-    submitting.value = false;
+    savingId.value = null;
   }
 }
 
@@ -323,79 +378,16 @@ async function doRemove(id: string) {
       await tauri.removeSystemQuickLink(props.ownerId, id);
     }
     await loadAppState();
-    if (editingId.value === id) {
-      resetForm();
+    if (expandedId.value === id) {
+      collapse();
     }
   } catch (err) {
     notifyBackendError(message, err, "删除预设失败");
   }
 }
-
-async function handleTestLogin() {
-  if (!canTestLogin.value) return;
-  testingLogin.value = true;
-  try {
-    const url = formState.value.url.trim();
-    const name = url;
-    const login = buildLogin();
-    if (!login) return;
-
-    // 先保存（添加或更新），再打开测试。
-    if (editingId.value) {
-      await tauri.editQuickLink(
-        props.ownerId,
-        editingId.value,
-        name,
-        url,
-        formState.value.autoOpen,
-        login,
-      );
-      await loadAppState();
-      await tauri.openQuickLink(props.ownerId, editingId.value);
-    } else {
-      // 新增：先记录已有 id，add 后按「同 url 且 id 不在旧集合」找回新预设。
-      // name/url 现在可重复，不能只按 url 找（会命中旧预设）。
-      const knownIds = new Set(currentLinks.value.map((l) => l.id));
-      await tauri.addQuickLink(
-        props.ownerId,
-        name,
-        url,
-        formState.value.autoOpen,
-        login,
-      );
-      await loadAppState();
-      const created = currentLinks.value.find(
-        (l) => l.url === url && !knownIds.has(l.id),
-      );
-      if (!created) return;
-      await tauri.openQuickLink(props.ownerId, created.id);
-    }
-  } catch (err) {
-    notifyBackendError(message, err, "测试登录失败");
-  } finally {
-    testingLogin.value = false;
-  }
-}
 </script>
 
 <style scoped>
-.links-form {
-  display: flex;
-  flex-direction: column;
-}
-
-.login-assist-fields {
-  padding-left: 16px;
-  display: flex;
-  flex-direction: column;
-}
-
-.form-submit {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-
 .preset-list {
   display: flex;
   flex-direction: column;
@@ -413,12 +405,18 @@ async function handleTestLogin() {
   background: rgba(128, 128, 128, 0.12);
 }
 
+.preset-row--open {
+  background: rgba(128, 128, 128, 0.06);
+  align-items: stretch;
+}
+
 .preset-text {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  cursor: pointer;
 }
 .preset-name {
   font-size: 14px;
@@ -433,5 +431,35 @@ async function handleTestLogin() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.preset-edit-form {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.preset-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 登录辅助 */
+.login-assist-fields {
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.advanced-toggle {
+  align-self: flex-start;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.login-advanced {
+  display: flex;
+  flex-direction: column;
 }
 </style>

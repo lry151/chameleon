@@ -38,12 +38,6 @@
           clearable
         />
       </n-form-item>
-
-      <n-form-item v-if="editing" label="角色级 Quick Links">
-        <n-button secondary @click="roleId && emit('manageLinks', roleId)">
-          管理预设
-        </n-button>
-      </n-form-item>
     </n-form>
 
     <template #footer>
@@ -81,7 +75,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:show", value: boolean): void;
   (e: "saved"): void;
-  (e: "manageLinks", roleId: string): void;
 }>();
 const message = useMessage();
 
@@ -107,8 +100,6 @@ const dialogTitle = computed(() => {
 const formName = ref("");
 const formColor = ref(COLOR_PALETTE[0]);
 const formSystemId = ref<string | null>(null);
-
-const roleId = computed(() => props.role?.id ?? null);
 
 const systemOptions = computed(() =>
   appState.value.systems.map((s) => ({ label: s.name, value: s.id })),

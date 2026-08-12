@@ -16,12 +16,6 @@
           @keydown.enter="handleSave"
         />
       </n-form-item>
-
-      <n-form-item v-if="editing && systemId" label="系统级 Quick Links">
-        <n-button secondary @click="emit('manageLinks', systemId!)">
-          管理预设
-        </n-button>
-      </n-form-item>
     </n-form>
 
     <template #footer>
@@ -57,7 +51,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:show", value: boolean): void;
   (e: "saved"): void;
-  (e: "manageLinks", systemId: string): void;
 }>();
 const message = useMessage();
 
