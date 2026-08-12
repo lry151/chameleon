@@ -709,7 +709,7 @@ pub fn run() {
             // remove 在工具主动关闭路径已先行完成 → 此处返回 None → 静默；
             // 仅「外部/意外关闭」时 emit，前端据此刷新角色按钮 + 非阻塞提示。
             let app_handle = app.handle().clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let mut rx = event_rx;
                 while let Some(ev) = rx.recv().await {
                 match ev {
