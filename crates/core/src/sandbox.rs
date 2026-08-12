@@ -79,12 +79,13 @@ pub async fn launch(session: &mut Session, cfg: &GlobalConfig) -> Result<Sandbox
     tokio::spawn(async move {
         let _ = handle.await;
         // 进程退出 → 删除临时数据目录。滞留子进程可能短暂占用文件，
-        // remove_dir_all 失败则重试几次兜底。
-        for _ in 0..5 {
+        // remove_dir_all 失败则重试兜底。CI 慢机偶发占用 >1s（cfcc70a 只给了
+        // 5×200ms），与集成测试的 10s 轮询窗口对齐：20×500ms。
+        for _ in 0..20 {
             if std::fs::remove_dir_all(&dir_for_cleanup).is_ok() {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
         // 通知接收端：外部关时前端刷新 + 提示；工具关（close 已先 remove）静默。
         if let Some(tx) = tx {
