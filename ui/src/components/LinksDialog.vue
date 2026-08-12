@@ -353,6 +353,9 @@ async function handleTestLogin() {
       await loadAppState();
       await tauri.openQuickLink(props.ownerId, editingId.value);
     } else {
+      // 新增：先记录已有 id，add 后按「同 url 且 id 不在旧集合」找回新预设。
+      // name/url 现在可重复，不能只按 url 找（会命中旧预设）。
+      const knownIds = new Set(currentLinks.value.map((l) => l.id));
       await tauri.addQuickLink(
         props.ownerId,
         name,
@@ -361,8 +364,9 @@ async function handleTestLogin() {
         login,
       );
       await loadAppState();
-      // id 由服务端生成，新增后按 url 找回再打开。
-      const created = currentLinks.value.find((l) => l.url === url);
+      const created = currentLinks.value.find(
+        (l) => l.url === url && !knownIds.has(l.id),
+      );
       if (!created) return;
       await tauri.openQuickLink(props.ownerId, created.id);
     }

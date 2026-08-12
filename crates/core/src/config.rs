@@ -37,7 +37,12 @@ impl ConfigStore {
         let mut cfg: GlobalConfig = serde_json::from_str(&raw)
             .map_err(|e| ChameleonError::ConfigInvalid { detail: e.to_string() })?;
         absolutize_paths(&mut cfg);
-        migrate_quicklink_ids(&mut cfg);
+        // 数据迁移：无 id 的 QuickLink 补 uuid 后立即落盘——否则每次 load 生成的
+        // uuid 都不同，前端拿到的 id 在下一次命令的 load 里查不到（chip 点击报
+        // 「预设不存在」）。仅首次迁移时写一次，之后幂等 no-op。
+        if migrate_quicklink_ids(&mut cfg) {
+            self.save(&cfg)?;
+        }
         safety::validate_config(&cfg)?;
         Ok(cfg)
     }
@@ -204,12 +209,14 @@ pub fn default_data_root() -> PathBuf {
 }
 
 /// 数据迁移：给历史上无 `id` 的 QuickLink 自动补 uuid（name 不再是唯一键）。
-/// 幂等：已有 id 的不动。下次 save 时写回新格式。
-fn migrate_quicklink_ids(cfg: &mut GlobalConfig) {
+/// 返回是否发生了迁移（有任意预设补了 id）。幂等：已有 id 的不动。
+fn migrate_quicklink_ids(cfg: &mut GlobalConfig) -> bool {
+    let mut changed = false;
     for role in &mut cfg.roles {
         for q in &mut role.quick_links {
             if q.id.is_empty() {
                 q.id = uuid::Uuid::new_v4().to_string();
+                changed = true;
             }
         }
     }
@@ -217,9 +224,11 @@ fn migrate_quicklink_ids(cfg: &mut GlobalConfig) {
         for q in &mut sys.quick_links {
             if q.id.is_empty() {
                 q.id = uuid::Uuid::new_v4().to_string();
+                changed = true;
             }
         }
     }
+    changed
 }
 
 /// 把相对的 data_root / 各角色 profile_dir 重定基到应用目录。
@@ -487,5 +496,12 @@ mod tests {
         // 历史 login 字段不迁移：Rust 类型已无该字段，反序列化时静默丢弃。
         // 无法直接断言字段缺席（类型上不存在），改为断言 load 成功且无残留效果。
         assert_eq!(role.name, "admin");
+
+        // 迁移必须落盘：再次 load 得到相同 id（否则前端持有的 id 在下次命令
+        // 的 load 里查不到，chip 点击报「预设不存在」）。
+        let cfg2 = ConfigStore::new(&path).load().unwrap();
+        assert_eq!(cfg2.roles[0].quick_links[0].id, cfg.roles[0].quick_links[0].id);
+        assert_eq!(cfg2.roles[0].quick_links[1].id, cfg.roles[0].quick_links[1].id);
+        assert_eq!(cfg2.systems[0].quick_links[0].id, cfg.systems[0].quick_links[0].id);
     }
 }
