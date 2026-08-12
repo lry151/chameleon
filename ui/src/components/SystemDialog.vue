@@ -104,6 +104,7 @@ async function handleSave() {
     emit("update:show", false);
   } catch (err) {
     notifyBackendError(message, err, "保存系统失败");
+  } finally {
     saving.value = false;
   }
 }
