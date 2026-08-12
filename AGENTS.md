@@ -109,6 +109,33 @@ cargo tauri dev -- --debug   # 或直接用 rust-gdb/lldb
 - Webkit 警告（`libEGL warning` 等）在 WSL2 无 GPU 环境下正常，可忽略
 - 配置错误 → 检查 `~/.config/chameleon/config.json`（Linux）或 `%APPDATA%/chameleon/`（Windows）
 
+
+## 本地验证 Windows exe（WSL interop）
+
+WSL2 能直接执行 Windows `.exe` 并把 stdout/stderr 转发到 WSL 终端——
+不必装 Windows / 盲发 CI 就能冒烟启动、抓 Rust panic。发版前必做，避免又一轮坏 release。
+
+### 跑 exe 抓启动 panic
+
+```bash
+# exe 必须在 Windows 文件系统路径（/mnt/c/...）；Linux fs（/tmp/...）会 permission denied
+cp <exe> /mnt/c/Users/Public/chm.exe
+RUST_BACKTRACE=1 timeout 12 /mnt/c/Users/Public/chm.exe   # panic 打到 stderr，<1s 出
+```
+
+v0.8.0 的启动闪退（`tokio::spawn` 在非 runtime 线程 panic，`src-tauri/src/lib.rs:712`）
+就是这法子抓的——CI 构建一个 Windows 轮次 ~10min，本地 WSL 跑 exe 秒级出 panic。
+
+### exe 从哪来（关键：必须是 msvc，不能是 gnu）
+
+- **CI 构建的 msvc portable**（推荐）：release.yml 产出的 `*_x64-portable.zip`，
+  msvc 目标静态链接 WebView2Loader（单文件可跑、能到 Rust 代码）。下载解压即冒烟。
+- **本地 msvc 交叉构建**：`cargo build --release --target x86_64-pc-windows-msvc -p chameleon-app`
+  ——需 `link.exe`（VS Build Tools）或 `lld-link`+`xwin`，WSL 默认未装；装好后可全本地闭环。
+- **gnu 交叉构建不可用于启动验证**：`x86_64-pc-windows-gnu` 目标动态链接 `WebView2Loader.dll`，
+  exe 启动即报"找不到 WebView2Loader.dll"、根本到不了 Rust 代码——与 msvc 发布版不等价。
+  （gnu 构建能用来验证纯 Rust 逻辑编译是否过，但验证不了 Windows 运行时行为。）
+
 ## 验证清单
 
 改动完成后，按以下顺序验证：
