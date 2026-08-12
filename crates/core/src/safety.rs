@@ -1,6 +1,6 @@
 //! 安全边界：拒绝把角色数据目录指向 Chrome/Edge 默认配置目录（不可协商）。
 //!
-//! 同时校验：端口冲突、角色名/数据目录重复。
+//! 同时校验：端口冲突、角色名（按系统作用域）/数据目录重复。
 
 use crate::error::{ChameleonError, Result};
 use crate::model::{GlobalConfig, Role};
@@ -81,7 +81,7 @@ pub fn validate_role(role: &Role, config: &GlobalConfig) -> Result<()> {
         if other.cdp_port == role.cdp_port {
             return Err(ChameleonError::PortConflict { port: role.cdp_port });
         }
-        if other.name == role.name {
+        if other.system_id == role.system_id && other.name == role.name {
             return Err(ChameleonError::DuplicateName { name: role.name.clone() });
         }
         if other.profile_dir == role.profile_dir {
@@ -97,6 +97,7 @@ pub fn validate_config(config: &GlobalConfig) -> Result<()> {
         return Err(ChameleonError::ConfigInvalid { detail: "数据根目录不能为空".into() });
     }
     let mut ports = std::collections::HashSet::new();
+    // 名称唯一性按 (system_id, name) 作用域：不同系统可重名，同一系统内不可。
     let mut names = std::collections::HashSet::new();
     let mut dirs = std::collections::HashSet::new();
     for role in &config.roles {
@@ -106,7 +107,7 @@ pub fn validate_config(config: &GlobalConfig) -> Result<()> {
         if !ports.insert(role.cdp_port) {
             return Err(ChameleonError::PortConflict { port: role.cdp_port });
         }
-        if !names.insert(role.name.clone()) {
+        if !names.insert((role.system_id.clone(), role.name.clone())) {
             return Err(ChameleonError::DuplicateName { name: role.name.clone() });
         }
         if !dirs.insert(role.profile_dir.clone()) {
@@ -154,6 +155,33 @@ mod tests {
         assert!(matches!(
             validate_config(&cfg),
             Err(ChameleonError::DefaultDirRefused { .. })
+        ));
+    }
+
+    #[test]
+    fn validation_allows_same_name_across_systems() {
+        let mut cfg = GlobalConfig::default();
+        cfg.data_root = PathBuf::from("/tmp/data");
+        let mut r1 = Role::new("admin".into(), "#fff".into(), PathBuf::from("/tmp/data/A/admin"), 9222);
+        r1.system_id = Some("sys-a".into());
+        let mut r2 = Role::new("admin".into(), "#000".into(), PathBuf::from("/tmp/data/B/admin"), 9223);
+        r2.system_id = Some("sys-b".into());
+        cfg.roles = vec![r1, r2];
+        assert!(validate_config(&cfg).is_ok(), "跨系统同名角色应通过校验");
+    }
+
+    #[test]
+    fn validation_rejects_same_name_within_system() {
+        let mut cfg = GlobalConfig::default();
+        cfg.data_root = PathBuf::from("/tmp/data");
+        let mut r1 = Role::new("admin".into(), "#fff".into(), PathBuf::from("/tmp/data/A/a"), 9222);
+        r1.system_id = Some("sys-a".into());
+        let mut r2 = Role::new("admin".into(), "#000".into(), PathBuf::from("/tmp/data/A/b"), 9223);
+        r2.system_id = Some("sys-a".into());
+        cfg.roles = vec![r1, r2];
+        assert!(matches!(
+            validate_config(&cfg),
+            Err(ChameleonError::DuplicateName { .. })
         ));
     }
 

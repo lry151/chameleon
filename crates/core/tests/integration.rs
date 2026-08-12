@@ -41,7 +41,7 @@ async fn fixture_role(name: &str) -> (tempfile::TempDir, ConfigStore, GlobalConf
     let store = ConfigStore::new(dir.path().join("config.json"));
     let mut cfg = GlobalConfig::default();
     cfg.data_root = dir.path().join("data");
-    let role = store.create_role(&mut cfg, name.into(), "#e74c3c".into()).unwrap();
+    let role = store.create_role(&mut cfg, name.into(), "#e74c3c".into(), None).unwrap();
     (dir, store, cfg, role)
 }
 

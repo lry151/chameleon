@@ -159,10 +159,10 @@ async fn get_state(state: State<'_, AppState>) -> Result<AppStateView, String> {
 /// —— 角色管理 ——
 
 #[tauri::command]
-async fn create_role(state: State<'_, AppState>, name: String, color: String) -> Result<Role, String> {
+async fn create_role(state: State<'_, AppState>, name: String, color: String, system_id: Option<String>) -> Result<Role, String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    store.create_role(&mut cfg, name, color).map_err(msg)
+    store.create_role(&mut cfg, name, color, system_id).map_err(msg)
 }
 
 #[tauri::command]

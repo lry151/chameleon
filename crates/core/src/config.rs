@@ -71,18 +71,29 @@ impl ConfigStore {
     }
 
     /// 创建角色：分配空闲端口、校验冲突、持久化。
-    /// 数据目录默认落在数据根目录下 `data_root/<name>`。
-    pub fn create_role(&self, cfg: &mut GlobalConfig, name: String, color: String) -> Result<Role> {
+    /// 名称唯一性按系统作用域（同系统内不可重名，不同系统可重名）。
+    /// 数据目录按系统落位：归属系统的角色落在 `data_root/<系统>/<角色>`，
+    /// 未分组角色落在 `data_root/<角色>`。
+    pub fn create_role(&self, cfg: &mut GlobalConfig, name: String, color: String, system_id: Option<String>) -> Result<Role> {
         if name.trim().is_empty() {
             return Err(ChameleonError::ConfigInvalid { detail: "角色名称不能为空".into() });
         }
-        if cfg.roles.iter().any(|r| r.name == name) {
+        let system_name = match &system_id {
+            Some(id) => Some(cfg.systems.iter().find(|s| s.id == *id)
+                .ok_or_else(|| ChameleonError::ConfigInvalid { detail: "系统不存在".into() })?
+                .name.as_str()),
+            None => None,
+        };
+        if cfg.roles.iter().any(|r| r.system_id == system_id && r.name == name) {
             return Err(ChameleonError::DuplicateName { name });
         }
         let used: Vec<u16> = cfg.roles.iter().map(|r| r.cdp_port).collect();
         let port = ports::pick_role_port(&used)?;
-        let profile_dir = cfg.data_root.join(sanitize_dir_name(&name));
-        let role = Role::new(name, color, profile_dir, port);
+        let profile_dir = role_profile_dir(&cfg.data_root, system_name, &name);
+        if cfg.roles.iter().any(|r| r.profile_dir == profile_dir) {
+            return Err(ChameleonError::DuplicateDir { dir: profile_dir });
+        }
+        let role = Role { system_id, ..Role::new(name, color, profile_dir, port) };
         cfg.roles.push(role.clone());
         self.save(cfg)?;
         Ok(role)
@@ -140,6 +151,16 @@ impl ConfigStore {
             }
         }
         self.save(cfg)
+    }
+}
+
+/// 角色数据目录：归属系统的角色落在 `data_root/<系统>/<角色>`，未分组角色落在 `data_root/<角色>`。
+/// 系统名与角色名都经清洗，保证 data_root 下安全落子目录、跨系统同名角色目录互斥。
+pub fn role_profile_dir(data_root: &Path, system_name: Option<&str>, role_name: &str) -> PathBuf {
+    let dir = sanitize_dir_name(role_name);
+    match system_name {
+        Some(s) => data_root.join(sanitize_dir_name(s)).join(dir),
+        None => data_root.join(dir),
     }
 }
 
@@ -260,7 +281,7 @@ mod tests {
         let store = ConfigStore::new(dir.path().join("config.json"));
         let mut cfg = GlobalConfig::default();
         cfg.data_root = dir.path().join("data");
-        let role = store.create_role(&mut cfg, "ERP-管理员".into(), "#e74c3c".into()).unwrap();
+        let role = store.create_role(&mut cfg, "ERP-管理员".into(), "#e74c3c".into(), None).unwrap();
         assert_eq!(role.name, "ERP-管理员");
         drop(store);
 
@@ -286,7 +307,7 @@ mod tests {
         assert!(cfg.data_root.is_absolute(),
             "data_root 必须绝对，实为 {:?}", cfg.data_root);
 
-        let role = store.create_role(&mut cfg, "admin".into(), "#fff".into()).unwrap();
+        let role = store.create_role(&mut cfg, "admin".into(), "#fff".into(), None).unwrap();
         assert!(role.profile_dir.is_absolute(),
             "profile_dir 必须绝对，实为 {:?}", role.profile_dir);
     }
@@ -321,9 +342,33 @@ mod tests {
         let store = ConfigStore::new(dir.path().join("config.json"));
         let mut cfg = GlobalConfig::default();
         cfg.data_root = dir.path().join("data");
-        store.create_role(&mut cfg, "管理员".into(), "#fff".into()).unwrap();
+        store.create_role(&mut cfg, "管理员".into(), "#fff".into(), None).unwrap();
         assert!(matches!(
-            store.create_role(&mut cfg, "管理员".into(), "#000".into()),
+            store.create_role(&mut cfg, "管理员".into(), "#000".into(), None),
+            Err(ChameleonError::DuplicateName { .. })
+        ));
+    }
+
+    #[test]
+    fn same_name_allowed_across_systems() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config.json"));
+        let mut cfg = GlobalConfig::default();
+        cfg.data_root = dir.path().join("data");
+        let sys_a = store.create_system(&mut cfg, "系统A".into()).unwrap();
+        let sys_b = store.create_system(&mut cfg, "系统B".into()).unwrap();
+        let r1 = store.create_role(&mut cfg, "admin".into(), "#e74c3c".into(), Some(sys_a.id.clone())).unwrap();
+        let r2 = store.create_role(&mut cfg, "admin".into(), "#3498db".into(), Some(sys_b.id.clone())).unwrap();
+        assert_eq!(r1.name, r2.name, "跨系统角色名应可重复");
+        assert_ne!(r1.profile_dir, r2.profile_dir, "数据目录必须互斥");
+        // 数据目录按系统落位：data_root/<系统>/<角色>
+        assert_eq!(r1.profile_dir, cfg.data_root.join("系统A").join("admin"));
+        assert_eq!(r2.profile_dir, cfg.data_root.join("系统B").join("admin"));
+        assert_eq!(r1.system_id.as_deref(), Some(sys_a.id.as_str()));
+        assert_eq!(r2.system_id.as_deref(), Some(sys_b.id.as_str()));
+        // 同系统内仍拒绝重名
+        assert!(matches!(
+            store.create_role(&mut cfg, "admin".into(), "#000".into(), Some(sys_a.id.clone())),
             Err(ChameleonError::DuplicateName { .. })
         ));
     }
@@ -337,8 +382,8 @@ mod tests {
         let sys = store.create_system(&mut cfg, "ERP系统".into()).unwrap();
         assert_eq!(cfg.systems.len(), 1);
         // 角色挂系统
-        let mut role = store.create_role(&mut cfg, "管理员".into(), "#e74c3c".into()).unwrap();
-        role.system_id = Some(sys.id.clone());
+        let role = store.create_role(&mut cfg, "管理员".into(), "#e74c3c".into(), Some(sys.id.clone())).unwrap();
+        assert_eq!(role.system_id.as_deref(), Some(sys.id.as_str()));
         store.update_role(&mut cfg, role.clone()).unwrap();
         // 删除系统 → 角色解绑但保留
         store.delete_system(&mut cfg, &sys.id).unwrap();
