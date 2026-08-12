@@ -49,7 +49,7 @@ export const tauri = {
   // —— 常用 URL 预设（角色级） ——
   addQuickLink: (
     roleId: string,
-    name: string,
+    name: string | null,
     url: string,
     autoOpen: boolean,
     login: QuickLinkLogin | null,
@@ -63,29 +63,29 @@ export const tauri = {
     }),
   editQuickLink: (
     roleId: string,
-    oldName: string,
-    name: string,
+    linkId: string,
+    name: string | null,
     url: string,
     autoOpen: boolean,
     login: QuickLinkLogin | null,
   ) =>
     invoke<void>("edit_quick_link", {
       roleId,
-      oldName,
+      linkId,
       name,
       url,
       autoOpen,
       login,
     }),
-  removeQuickLink: (roleId: string, name: string) =>
-    invoke<void>("remove_quick_link", { roleId, name }),
-  openQuickLink: (roleId: string, name: string) =>
-    invoke<string>("open_quick_link", { roleId, name }),
+  removeQuickLink: (roleId: string, linkId: string) =>
+    invoke<void>("remove_quick_link", { roleId, linkId }),
+  openQuickLink: (roleId: string, linkId: string) =>
+    invoke<string>("open_quick_link", { roleId, linkId }),
 
   // —— 常用 URL 预设（系统级） ——
   addSystemQuickLink: (
     systemId: string,
-    name: string,
+    name: string | null,
     url: string,
     autoOpen: boolean,
   ) =>
@@ -97,20 +97,20 @@ export const tauri = {
     }),
   editSystemQuickLink: (
     systemId: string,
-    oldName: string,
-    name: string,
+    linkId: string,
+    name: string | null,
     url: string,
     autoOpen: boolean,
   ) =>
     invoke<void>("edit_system_quick_link", {
       systemId,
-      oldName,
+      linkId,
       name,
       url,
       autoOpen,
     }),
-  removeSystemQuickLink: (systemId: string, name: string) =>
-    invoke<void>("remove_system_quick_link", { systemId, name }),
+  removeSystemQuickLink: (systemId: string, linkId: string) =>
+    invoke<void>("remove_system_quick_link", { systemId, linkId }),
 
   // —— 接力 ——
   handoff: (sourceId: string, targetId: string, mode: HandoffMode) =>

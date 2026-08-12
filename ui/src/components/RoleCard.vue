@@ -27,11 +27,11 @@
       <template v-if="hasOwnLinks">
         <n-button
           v-for="link in role.quick_links"
-          :key="link.name"
+          :key="link.id"
           size="tiny"
           secondary
           class="role-link-chip"
-          @click="openLink(link.url)"
+          @click="openQuickLink(link.id)"
         >
           {{ link.name || link.url }}
         </n-button>
@@ -53,11 +53,11 @@
           <div class="inherited-chips">
             <n-button
               v-for="link in inheritedLinks"
-              :key="link.name"
+              :key="link.id"
               size="tiny"
               secondary
               class="inherited-link-chip"
-              @click="openLink(link.url)"
+              @click="openQuickLink(link.id)"
             >
               {{ link.name || link.url }}
             </n-button>
@@ -275,8 +275,14 @@ async function doDelete() {
   }
 }
 
-function openLink(url: string) {
-  window.open(url, "_blank", "noopener");
+async function openQuickLink(linkId: string) {
+  try {
+    await tauri.openQuickLink(props.role.id, linkId);
+    // 角色未启动时 open 会先拉起，刷新运行态。
+    await loadAppState();
+  } catch (err) {
+    notifyBackendError(message, err, `打开预设失败`);
+  }
 }
 </script>
 

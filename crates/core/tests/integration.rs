@@ -353,12 +353,12 @@ async fn restore_suppresses_auto_open() {
     }
     let (dir, store, mut cfg, mut role) = fixture_role("抑制auto").await;
     // 给角色配一个 auto_open 预设：恢复后不应重新打开
-    role.quick_links.push(QuickLink {
-        name: "默认页".into(),
-        url: "https://auto-open.example/".into(),
-        auto_open: true,
-        login: None,
-    });
+    role.quick_links.push(QuickLink::new(
+        Some("默认页".into()),
+        "https://auto-open.example/".into(),
+        true,
+        None,
+    ));
     let snaps = SnapshotStore::new(&dir.path().join("snapshots"));
     let mut session = Session::default();
 

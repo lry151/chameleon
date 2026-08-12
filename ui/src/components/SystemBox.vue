@@ -49,11 +49,11 @@
     <div v-if="system && system.quick_links.length > 0" class="sys-links">
       <n-button
         v-for="link in system.quick_links"
-        :key="link.name"
+        :key="link.id"
         size="tiny"
         secondary
         class="sys-link-chip"
-        @click="openLink(link.url)"
+        @click="openSysLink(link.id)"
       >
         {{ link.name || link.url }}
       </n-button>
@@ -87,9 +87,11 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useMessage } from "naive-ui";
 import type { RoleView, System } from "../types/api";
 import { tauri } from "../composables/useTauri";
 import { loadAppState } from "../composables/useAppState";
+import { notifyBackendError } from "../composables/useErrorToast";
 import RoleCard from "./RoleCard.vue";
 import DeleteConfirm from "./DeleteConfirm.vue";
 
@@ -113,6 +115,7 @@ const emit = defineEmits<{
 const busyLaunch = ref(false);
 const busyClose = ref(false);
 const showDeleteWithRoles = ref(false);
+const message = useMessage();
 
 const hasRunningRoles = computed(() =>
   props.roles.some((r) => r.running),
@@ -169,8 +172,20 @@ async function doDeleteSystemWithRoles() {
   emit("system-deleted");
 }
 
-function openLink(url: string) {
-  window.open(url, "_blank", "noopener");
+/// 系统级预设点击：经该系统的第一个角色在隔离 Chrome 中打开（未启动先拉起）。
+async function openSysLink(linkId: string) {
+  const role = props.roles[0];
+  if (!role) {
+    message.error("系统下没有角色，无法打开预设");
+    return;
+  }
+  try {
+    await tauri.openQuickLink(role.id, linkId);
+    // 角色未启动时 open 会先拉起，刷新运行态。
+    await loadAppState();
+  } catch (err) {
+    notifyBackendError(message, err, `打开预设失败`);
+  }
 }
 </script>
 

@@ -9,7 +9,7 @@ use chameleon_core::{
     export,
     handoff::HandoffMode,
     launcher,
-    model::{LoginConfig, QuickLinkLogin, Role, System, UiPreferences},
+    model::{QuickLinkLogin, Role, System, UiPreferences},
     quicklinks, sandbox,
     snapshot::SnapshotStore,
     ChameleonError, Session, SessionEvent,
@@ -284,31 +284,6 @@ async fn close_all(state: State<'_, AppState>) -> Result<BatchResult, String> {
     ).await)
 }
 
-/// —— 登录辅助 ——
-
-#[tauri::command]
-async fn login_assist_cmd(state: State<'_, AppState>, role_id: String) -> Result<(), String> {
-    let store = state.store();
-    let cfg = store.load().map_err(msg)?;
-    let mut session = state.session.lock().await;
-    launcher::prune_dead_roles(&mut session).await;
-    launcher::login_assist(&mut session, &cfg, &role_id).await.map_err(msg)
-}
-
-/// —— 角色登录配置 ——
-
-#[tauri::command]
-async fn set_role_login(state: State<'_, AppState>, role_id: String, login: Option<LoginConfig>) -> Result<(), String> {
-    let store = state.store();
-    let mut cfg = store.load().map_err(msg)?;
-    if let Some(slot) = cfg.roles.iter_mut().find(|r| r.id == role_id) {
-        slot.login = login;
-        store.save(&cfg).map_err(msg)
-    } else {
-        Err(msg(ChameleonError::RoleNotFound { id: role_id }))
-    }
-}
-
 /// —— 接力 ——
 
 #[tauri::command]
@@ -330,54 +305,54 @@ async fn handoff_cmd(
 /// —— 常用 URL 预设（角色级 + 系统级） ——
 
 #[tauri::command]
-async fn add_quick_link(state: State<'_, AppState>, role_id: String, name: String, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
+async fn add_quick_link(state: State<'_, AppState>, role_id: String, name: Option<String>, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::add(&store, &mut cfg, &role_id, &name, &url, auto_open, login).map_err(msg)
+    quicklinks::add(&store, &mut cfg, &role_id, name, &url, auto_open, login).map_err(msg)
 }
 
 #[tauri::command]
-async fn edit_quick_link(state: State<'_, AppState>, role_id: String, old_name: String, name: String, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
+async fn edit_quick_link(state: State<'_, AppState>, role_id: String, link_id: String, name: Option<String>, url: String, auto_open: bool, login: Option<QuickLinkLogin>) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::edit(&store, &mut cfg, &role_id, &old_name, &name, &url, auto_open, login).map_err(msg)
+    quicklinks::edit(&store, &mut cfg, &role_id, &link_id, name, &url, auto_open, login).map_err(msg)
 }
 
 #[tauri::command]
-async fn remove_quick_link(state: State<'_, AppState>, role_id: String, name: String) -> Result<(), String> {
+async fn remove_quick_link(state: State<'_, AppState>, role_id: String, link_id: String) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::remove(&store, &mut cfg, &role_id, &name).map_err(msg)
+    quicklinks::remove(&store, &mut cfg, &role_id, &link_id).map_err(msg)
 }
 
 #[tauri::command]
-async fn open_quick_link(state: State<'_, AppState>, role_id: String, name: String) -> Result<String, String> {
+async fn open_quick_link(state: State<'_, AppState>, role_id: String, link_id: String) -> Result<String, String> {
     let store = state.store();
     let cfg = store.load().map_err(msg)?;
     let mut session = state.session.lock().await;
     launcher::prune_dead_roles(&mut session).await;
-    quicklinks::open(&mut session, &cfg, &role_id, &name).await.map_err(msg)
+    quicklinks::open(&mut session, &cfg, &role_id, &link_id).await.map_err(msg)
 }
 
 #[tauri::command]
-async fn add_system_quick_link(state: State<'_, AppState>, system_id: String, name: String, url: String, auto_open: bool) -> Result<(), String> {
+async fn add_system_quick_link(state: State<'_, AppState>, system_id: String, name: Option<String>, url: String, auto_open: bool) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::add_system(&store, &mut cfg, &system_id, &name, &url, auto_open).map_err(msg)
+    quicklinks::add_system(&store, &mut cfg, &system_id, name, &url, auto_open).map_err(msg)
 }
 
 #[tauri::command]
-async fn edit_system_quick_link(state: State<'_, AppState>, system_id: String, old_name: String, name: String, url: String, auto_open: bool) -> Result<(), String> {
+async fn edit_system_quick_link(state: State<'_, AppState>, system_id: String, link_id: String, name: Option<String>, url: String, auto_open: bool) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::edit_system(&store, &mut cfg, &system_id, &old_name, &name, &url, auto_open).map_err(msg)
+    quicklinks::edit_system(&store, &mut cfg, &system_id, &link_id, name, &url, auto_open).map_err(msg)
 }
 
 #[tauri::command]
-async fn remove_system_quick_link(state: State<'_, AppState>, system_id: String, name: String) -> Result<(), String> {
+async fn remove_system_quick_link(state: State<'_, AppState>, system_id: String, link_id: String) -> Result<(), String> {
     let store = state.store();
     let mut cfg = store.load().map_err(msg)?;
-    quicklinks::remove_system(&store, &mut cfg, &system_id, &name).map_err(msg)
+    quicklinks::remove_system(&store, &mut cfg, &system_id, &link_id).map_err(msg)
 }
 
 /// —— 浏览器路径 ——
@@ -754,7 +729,6 @@ pub fn run() {
             create_role, update_role, delete_role,
             create_system, update_system, delete_system, delete_system_with_roles,
             launch_role_cmd, close_role_cmd, launch_all, launch_system, close_system, close_all,
-            login_assist_cmd, set_role_login,
             handoff_cmd,
             add_quick_link, edit_quick_link, remove_quick_link, open_quick_link,
             add_system_quick_link, edit_system_quick_link, remove_system_quick_link,

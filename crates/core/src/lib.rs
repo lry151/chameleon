@@ -25,7 +25,7 @@ pub mod snapshot;
 pub mod window;
 
 pub use error::{ChameleonError, Result};
-pub use model::{GlobalConfig, LoginConfig, QuickLink, Role, System, ThemeMode, UiPreferences, WindowRect};
+pub use model::{GlobalConfig, QuickLink, Role, System, ThemeMode, UiPreferences, WindowRect};
 pub use session::{Session, SessionEvent};
 
 // —— tracing 降级路径辅助 ——

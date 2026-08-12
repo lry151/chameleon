@@ -159,12 +159,10 @@ async function handleSave() {
       const created = await tauri.createRole(trimmed, formColor.value);
       if (formSystemId.value || (props.clone && props.role)) {
         const sourceLinks = props.clone && props.role ? props.role.quick_links : [];
-        const sourceLogin = props.clone && props.role ? props.role.login : null;
         await tauri.updateRole({
           ...created,
           system_id: formSystemId.value,
           quick_links: sourceLinks,
-          login: sourceLogin,
         });
       }
     }

@@ -81,7 +81,7 @@
           :loading="submitting"
           @click="handleSubmit"
         >
-          {{ editingName ? "保存" : "添加预设" }}
+          {{ editingId ? "保存" : "添加预设" }}
         </n-button>
       </div>
     </n-form>
@@ -95,7 +95,7 @@
       </n-text>
       <div
         v-for="link in currentLinks"
-        :key="link.name"
+        :key="link.id"
         class="preset-row"
       >
         <div class="preset-text">
@@ -117,10 +117,10 @@
           编辑
         </n-button>
         <n-popconfirm
-          :show="deleteTarget === link.name"
+          :show="deleteTarget === link.id"
           positive-text="删除"
           negative-text="取消"
-          @positive-click="doRemove(link.name)"
+          @positive-click="doRemove(link.id)"
           @negative-click="deleteTarget = null"
           @click-outside="deleteTarget = null"
         >
@@ -129,7 +129,7 @@
               size="tiny"
               quaternary
               type="error"
-              @click="deleteTarget = link.name"
+              @click="deleteTarget = link.id"
             >
               ×
             </n-button>
@@ -181,8 +181,8 @@ const formState = ref<FormState>({
   usernameSelector: "",
 });
 
-/// 编辑模式：记录正在编辑的预设原始 name（即 URL）。
-const editingName = ref<string | null>(null);
+/// 编辑模式：记录正在编辑的预设 id（null = 新增）。
+const editingId = ref<string | null>(null);
 const submitting = ref(false);
 const testingLogin = ref(false);
 const deleteTarget = ref<string | null>(null);
@@ -224,7 +224,7 @@ function resetForm() {
     username: "",
     usernameSelector: "",
   };
-  editingName.value = null;
+  editingId.value = null;
   deleteTarget.value = null;
 }
 
@@ -245,7 +245,7 @@ function startEdit(link: QuickLink) {
     formState.value.username = '';
     formState.value.usernameSelector = '';
   }
-  editingName.value = link.name;
+  editingId.value = link.id;
 }
 
 function buildLogin(): QuickLinkLogin | null {
@@ -269,10 +269,10 @@ async function handleSubmit() {
   submitting.value = true;
   try {
     if (isRole.value) {
-      if (editingName.value) {
+      if (editingId.value) {
         await tauri.editQuickLink(
           props.ownerId,
-          editingName.value,
+          editingId.value,
           name,
           url,
           autoOpen,
@@ -288,10 +288,10 @@ async function handleSubmit() {
         );
       }
     } else {
-      if (editingName.value) {
+      if (editingId.value) {
         await tauri.editSystemQuickLink(
           props.ownerId,
-          editingName.value,
+          editingId.value,
           name,
           url,
           autoOpen,
@@ -314,16 +314,16 @@ async function handleSubmit() {
   }
 }
 
-async function doRemove(name: string) {
+async function doRemove(id: string) {
   deleteTarget.value = null;
   try {
     if (isRole.value) {
-      await tauri.removeQuickLink(props.ownerId, name);
+      await tauri.removeQuickLink(props.ownerId, id);
     } else {
-      await tauri.removeSystemQuickLink(props.ownerId, name);
+      await tauri.removeSystemQuickLink(props.ownerId, id);
     }
     await loadAppState();
-    if (editingName.value === name) {
+    if (editingId.value === id) {
       resetForm();
     }
   } catch (err) {
@@ -341,40 +341,31 @@ async function handleTestLogin() {
     if (!login) return;
 
     // 先保存（添加或更新），再打开测试。
-    if (editingName.value) {
+    if (editingId.value) {
       await tauri.editQuickLink(
         props.ownerId,
-        editingName.value,
+        editingId.value,
         name,
         url,
         formState.value.autoOpen,
         login,
       );
+      await loadAppState();
+      await tauri.openQuickLink(props.ownerId, editingId.value);
     } else {
-      // 如果同名已存在则更新，否则新增。
-      const existing = currentLinks.value.find((l) => l.name === name);
-      if (existing) {
-        await tauri.editQuickLink(
-          props.ownerId,
-          existing.name,
-          name,
-          url,
-          formState.value.autoOpen,
-          login,
-        );
-      } else {
-        await tauri.addQuickLink(
-          props.ownerId,
-          name,
-          url,
-          formState.value.autoOpen,
-          login,
-        );
-      }
+      await tauri.addQuickLink(
+        props.ownerId,
+        name,
+        url,
+        formState.value.autoOpen,
+        login,
+      );
+      await loadAppState();
+      // id 由服务端生成，新增后按 url 找回再打开。
+      const created = currentLinks.value.find((l) => l.url === url);
+      if (!created) return;
+      await tauri.openQuickLink(props.ownerId, created.id);
     }
-    await loadAppState();
-    editingName.value = name;
-    await tauri.openQuickLink(props.ownerId, name);
   } catch (err) {
     notifyBackendError(message, err, "测试登录失败");
   } finally {

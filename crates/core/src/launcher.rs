@@ -1,6 +1,6 @@
 //! 角色窗口启动 / 连接 / 关闭：隔离参数（独立数据目录 + CDP 端口）、
 //! 窗口位置恢复、新标签页、读激活标签、CDP 优雅关闭、
-//! 首次启动自动打开预设、登录辅助（半自动填用户名）。
+//! 首次启动自动打开预设、登录辅助（预设级全自动填用户名+密码）。
 
 use crate::browser;
 use crate::config::{is_writable, ConfigStore};
@@ -439,58 +439,6 @@ pub async fn close_all_roles(session: &mut Session, store: &ConfigStore, cfg: &m
     for id in ids {
         crate::warn_err(close_role(session, store, cfg, &id).await, "close_all_roles 关闭失败");
     }
-}
-
-/// 登录辅助（角色级 LoginConfig）：打开登录页 → 填用户名 → 填密码。
-/// 选择器为 None 时自动找（`input[type=password]` + 其前最近的 text/email）。
-pub async fn login_assist(session: &mut Session, cfg: &GlobalConfig, role_id: &str) -> Result<()> {
-    let role = cfg
-        .roles
-        .iter()
-        .find(|r| r.id == role_id)
-        .ok_or_else(|| ChameleonError::RoleNotFound { id: role_id.into() })?
-        .clone();
-    let login = role
-        .login
-        .clone()
-        .ok_or_else(|| ChameleonError::ConfigInvalid { detail: "该角色未配置登录辅助".into() })?;
-    if !session.is_role_running(&role.id) {
-        launch_role(session, cfg, &role, true).await?;
-    }
-    let run = session.roles.get_mut(role_id).expect("just launched");
-    let page = run
-        .browser
-        .new_page(CreateTargetParams::new(&login.login_url))
-        .await
-        .map_err(|e| ChameleonError::cdp_operation_failed("login_assist", "打开登录页失败", e))?;
-    let id = page.target_id().clone();
-    crate::warn_err(page.activate().await, "login_assist page.activate 失败");
-    run.active_page = Some(id);
-
-    let js = build_login_js(&login.username, "", login.username_selector.as_deref(), login.password_selector.as_deref());
-    // SPA 延迟渲染：轮询等输入框出现（最多 5s）
-    let mut last = String::from("pending");
-    for _ in 0..50 {
-        match page.evaluate(js.as_str()).await {
-            Ok(r) => {
-                last = r.into_value::<String>().unwrap_or_default();
-                if last == "ok" {
-                    return Ok(());
-                }
-                if last != "no_password" && last != "no_username" {
-                    break;
-                }
-            }
-            Err(_) => {}
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    let detail = match last.as_str() {
-        "no_password" => "未找到密码输入框，请手动登录",
-        "no_username" => "未找到用户名输入框，请手动登录",
-        _ => "登录辅助执行失败，请手动登录",
-    };
-    Err(ChameleonError::CdpOperation { detail: detail.into() })
 }
 
 /// 登录辅助（预设级 QuickLinkLogin）：打开指定 URL → 填用户名 + 密码。

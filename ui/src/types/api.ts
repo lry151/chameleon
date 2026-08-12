@@ -18,9 +18,10 @@ export const DEFAULT_PREFS: UiPreferences = {
   accent_color: "#1abc9c",
 };
 
-/// 常用 URL 预设（与 Rust `QuickLink` 对齐）。
+/// 常用 URL 预设（与 Rust `QuickLink` 对齐）。id 为唯一键，name 纯显示可空可重。
 export interface QuickLink {
-  name: string;
+  id: string;
+  name: string | null;
   url: string;
   auto_open: boolean;
   login: QuickLinkLogin | null;
@@ -29,14 +30,6 @@ export interface QuickLink {
 export interface QuickLinkLogin {
   username: string;
   password: string;
-  username_selector: string | null;
-  password_selector: string | null;
-}
-
-/// 登录辅助（不存密码）。
-export interface LoginConfig {
-  login_url: string;
-  username: string;
   username_selector: string | null;
   password_selector: string | null;
 }
@@ -58,7 +51,6 @@ export interface Role {
   quick_links: QuickLink[];
   window_rect: WindowRect | null;
   system_id: string | null;
-  login: LoginConfig | null;
 }
 
 /// 角色视图 = Role 字段平铺 + running 标记（对应 Rust `RoleView` #[serde(flatten)]）。

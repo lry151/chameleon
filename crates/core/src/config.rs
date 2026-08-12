@@ -37,6 +37,7 @@ impl ConfigStore {
         let mut cfg: GlobalConfig = serde_json::from_str(&raw)
             .map_err(|e| ChameleonError::ConfigInvalid { detail: e.to_string() })?;
         absolutize_paths(&mut cfg);
+        migrate_quicklink_ids(&mut cfg);
         safety::validate_config(&cfg)?;
         Ok(cfg)
     }
@@ -200,6 +201,25 @@ pub fn data_base() -> PathBuf {
 /// 装在 Program Files 时自动回落到 per-user，永远可写。
 pub fn default_data_root() -> PathBuf {
     data_base().join("data")
+}
+
+/// 数据迁移：给历史上无 `id` 的 QuickLink 自动补 uuid（name 不再是唯一键）。
+/// 幂等：已有 id 的不动。下次 save 时写回新格式。
+fn migrate_quicklink_ids(cfg: &mut GlobalConfig) {
+    for role in &mut cfg.roles {
+        for q in &mut role.quick_links {
+            if q.id.is_empty() {
+                q.id = uuid::Uuid::new_v4().to_string();
+            }
+        }
+    }
+    for sys in &mut cfg.systems {
+        for q in &mut sys.quick_links {
+            if q.id.is_empty() {
+                q.id = uuid::Uuid::new_v4().to_string();
+            }
+        }
+    }
 }
 
 /// 把相对的 data_root / 各角色 profile_dir 重定基到应用目录。
@@ -416,5 +436,56 @@ mod tests {
             let back: ThemeMode = serde_json::from_str(&json).unwrap();
             assert_eq!(back, mode);
         }
+    }
+
+    #[test]
+    fn legacy_quicklinks_get_ids_and_role_login_dropped_on_load() {
+        // 旧格式：QuickLink 无 id、name 非空；Role 带 login 字段。
+        // load 时 QuickLink 必须补 uuid，role.login 必须被丢弃（不迁移）。
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let legacy = r##"{
+            "browser_path": null,
+            "data_root": "data",
+            "roles": [{
+                "id": "role-1",
+                "name": "admin",
+                "color": "#fff",
+                "profile_dir": "data\\admin",
+                "cdp_port": 9222,
+                "quick_links": [
+                    { "name": "首页", "url": "https://a.example/", "auto_open": true },
+                    { "name": "后台", "url": "https://b.example/", "auto_open": false }
+                ],
+                "window_rect": null,
+                "login": {
+                    "login_url": "https://login.example/",
+                    "username": "u",
+                    "username_selector": null,
+                    "password_selector": null
+                }
+            }],
+            "systems": [{
+                "id": "sys-1",
+                "name": "ERP",
+                "quick_links": [
+                    { "name": "共享", "url": "https://s.example/", "auto_open": true }
+                ]
+            }],
+            "ui_preferences": { "theme": "Dark", "panel_opacity": 0.72, "accent_color": "#1abc9c" }
+        }"##;
+        fs::write(&path, legacy).unwrap();
+        let cfg = ConfigStore::new(&path).load().unwrap();
+
+        let role = &cfg.roles[0];
+        assert!(role.quick_links.iter().all(|q| !q.id.is_empty()),
+            "无 id 的 QuickLink 应补 uuid");
+        assert!(role.quick_links[0].id != role.quick_links[1].id,
+            "两个预设的 id 必须不同");
+        assert!(cfg.systems[0].quick_links.iter().all(|q| !q.id.is_empty()),
+            "系统级预设也应补 uuid");
+        // 历史 login 字段不迁移：Rust 类型已无该字段，反序列化时静默丢弃。
+        // 无法直接断言字段缺席（类型上不存在），改为断言 load 成功且无残留效果。
+        assert_eq!(role.name, "admin");
     }
 }
