@@ -4,9 +4,7 @@
   "version": "0.8.1",
   "identifier": "com.chameleon.tool",
   "build": {
-    "devUrl": "http://localhost:1420",
     "frontendDist": "www",
-    "beforeDevCommand": "pnpm --dir ../ui dev",
     "beforeBuildCommand": "pnpm --dir ../ui build"
   },
   "app": {
